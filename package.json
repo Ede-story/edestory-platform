@@ -1,0 +1,22 @@
+{
+  "name": "edestory-platform",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Mono‑repository for Edestory e‑commerce platform.  This workspace uses pnpm and turborepo to orchestrate multiple apps (storefront, orchestrator) and packages (design tokens, presenters, Saleor SDK).",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "infra/*"
+  ],
+  "scripts": {
+    "build": "turbo run build --parallel",
+    "dev": "turbo run dev --parallel",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "prepare": "husky install"
+  },
+  "devDependencies": {
+    "@vercel/ncc": "^0.38.0",
+    "turbo": "^2.0.0"
+  }
+}
