@@ -1,0 +1,23 @@
+{
+  "name": "@edestory/storefront",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Customer-facing storefront built on Saleor's Next.js storefront.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "next": "^14.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "@apollo/client": "^3.9.0",
+    "graphql": "^16.7.1",
+    "tailwindcss": "^3.4.0",
+    "@saleor/storefront": "github:saleor/storefront#edc85b0"
+  },
+  "devDependencies": {
+    "typescript": "^5.2.0"
+  }
+}
