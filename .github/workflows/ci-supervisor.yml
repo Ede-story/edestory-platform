@@ -106,4 +106,5 @@ jobs:
           CR_URL="${{ steps.cr.outputs.url }}"
           BODY="✅ Supervisor run.\n• Cloud Run: **${CR_URL}**"
           gh api repos/${{ github.repository }}/issues/$PR/comments -f body="$BODY"
+# ci-touch: 016 – force diff
 
