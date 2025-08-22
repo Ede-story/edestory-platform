@@ -1,5 +1,5 @@
-=== EDEstory Converge 2025-08-22T13:49:40Z ===
-repo=Ede-story/edestory-platform sha=cb25e07ae7d7c1215f08e4d4869b88eb49d8b8b4
+=== EDEstory Converge 2025-08-22T14:14:32Z ===
+repo=Ede-story/edestory-platform sha=10b3d5adede32a07c7450edc5612acb5e8919f80
 GCP_PROJECT_ID=rosy-stronghold-467817-k6
 WIF_PROVIDER=projects/49781379815/locations/global/workloadIdentityPools/github-pool/providers/github-provider
 GCP_SA_EMAIL=github-ci-sa@rosy-stronghold-467817-k6.iam.gserviceaccount.com
