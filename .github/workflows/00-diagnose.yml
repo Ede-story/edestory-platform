@@ -1,4 +1,4 @@
-name: 00 Diagnose (WIF → Cloud Run dry-run → log artifact)
+name: 00 Diagnose (WIF → Cloud Run dry-run → write log to repo)
 
 on:
   push:
@@ -7,32 +7,36 @@ on:
   workflow_dispatch: {}
 
 permissions:
-  actions: read
-  contents: read
+  contents: write
   id-token: write
 
 jobs:
   diag:
     runs-on: ubuntu-latest
     env:
+      # берём vars из настроек репозитория
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       WIF_PROVIDER:   ${{ vars.WIF_PROVIDER }}
       GCP_SA_EMAIL:   ${{ vars.GCP_SA_EMAIL }}
-      REGION: europe-west1
-      SERVICE: diary-api-preview
+      REGION:         europe-west1
+      SERVICE:        diary-api-preview
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Start log
+      - name: Init log
+        shell: bash
         run: |
-          mkdir -p diag
-          LOG=diag/diag.log
-          echo "=== DIAG $(date -u +%FT%TZ) ==="         | tee -a "$LOG"
-          echo "repo=$GITHUB_REPOSITORY sha=$GITHUB_SHA" | tee -a "$LOG"
+          set -euo pipefail
+          mkdir -p ops/diagnose
+          LOG="ops/diagnose/last_run.log"
+          echo "=== DIAG $(date -u +%FT%TZ) ==="           | tee "$LOG"
+          echo "repo=$GITHUB_REPOSITORY sha=$GITHUB_SHA"   | tee -a "$LOG"
           echo "GCP_PROJECT_ID=${GCP_PROJECT_ID:-MISSING}" | tee -a "$LOG"
           echo "WIF_PROVIDER=${WIF_PROVIDER:-MISSING}"     | tee -a "$LOG"
           echo "GCP_SA_EMAIL=${GCP_SA_EMAIL:-MISSING}"     | tee -a "$LOG"
+          echo "REGION=${REGION} SERVICE=${SERVICE}"       | tee -a "$LOG"
+          echo "----------------------------------------"  | tee -a "$LOG"
 
       - name: Auth to GCP (WIF)
         uses: google-github-actions/auth@v2
@@ -46,39 +50,43 @@ jobs:
           project_id: ${{ env.GCP_PROJECT_ID }}
 
       - name: Enable required APIs (idempotent)
+        shell: bash
         run: |
-          set -euxo pipefail
-          LOG=diag/diag.log
+          set -euo pipefail
+          LOG="ops/diagnose/last_run.log"
           {
+            gcloud config set project "${GCP_PROJECT_ID}" >/dev/null
             gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com secretmanager.googleapis.com --quiet
             echo "APIs OK"
           } 2>&1 | tee -a "$LOG"
 
-      - name: Quick WIF check
+      - name: Quick WIF + SA check
+        shell: bash
         run: |
-          set -euxo pipefail
-          LOG=diag/diag.log
+          set -euo pipefail
+          LOG="ops/diagnose/last_run.log"
           {
-            gcloud config list
             gcloud auth list
-            gcloud iam service-accounts describe "${GCP_SA_EMAIL}" --format="value(email)"
+            gcloud iam service-accounts describe "${GCP_SA_EMAIL}" --format="value(email)" || true
           } 2>&1 | tee -a "$LOG"
 
-      - name: Cloud Run describe (best-effort)
+      - name: Describe Cloud Run (best-effort)
         continue-on-error: true
+        shell: bash
         run: |
-          set -euxo pipefail
-          LOG=diag/diag.log
+          set -euo pipefail
+          LOG="ops/diagnose/last_run.log"
           {
-            echo "Describe existing service (may fail if not created yet)…"
+            echo "Describe ${SERVICE} in ${REGION} (may be absent)…"
             gcloud run services describe "${SERVICE}" --region "${REGION}" --format yaml || true
           } 2>&1 | tee -a "$LOG"
 
-      - name: Dry-run deploy from source (diagnostic)
+      - name: Dry-run deploy from source
         continue-on-error: true
+        shell: bash
         run: |
-          set -euxo pipefail
-          LOG=diag/diag.log
+          set -euo pipefail
+          LOG="ops/diagnose/last_run.log"
           {
             echo "Dry-run deploy from apps/api…"
             gcloud run deploy "${SERVICE}" \
@@ -92,9 +100,16 @@ jobs:
             echo "Dry-run OK (client-side validation passed)."
           } 2>&1 | tee -a "$LOG"
 
-      - name: Upload diag artifact (always)
+      # всегда записываем лог в репозиторий (без gh/pat — через git)
+      - name: Commit and push log (always)
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: edestory-diagnose-log
-          path: diag/diag.log
+        shell: bash
+        run: |
+          set -e
+          git config user.name  "edestory-orchestrator[bot]"
+          git config user.email "edestory-orchestrator[bot]@users.noreply.github.com"
+          cp ops/diagnose/last_run.log "ops/diagnose/run-${GITHUB_RUN_NUMBER}.log" || true
+          git add ops/diagnose/last_run.log ops/diagnose/run-${GITHUB_RUN_NUMBER}.log || true
+          git commit -m "ops(diagnose): save last_run.log (run ${GITHUB_RUN_NUMBER})" || true
+          git push || true
+
