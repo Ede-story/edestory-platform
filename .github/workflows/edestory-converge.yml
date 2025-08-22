@@ -21,7 +21,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # --- PREFLIGHT: проверяем, что заданы Vars и генерится App-токен ---
+      # PREFLIGHT: проверяем переменные и собираем App-токен
       - name: Preflight – print App vars (masked)
         run: |
           echo "GH_APP_ID=${GH_APP_ID:-MISSING}"
@@ -45,7 +45,7 @@ jobs:
           gh api repos/${{ github.repository }}/issues/9/comments \
             -f body="App token OK (preflight). Proceeding to deploy…" || exit 1
 
-      # --- GCP AUTH (WIF) + gcloud ---
+      # GCP AUTH (WIF) + gcloud
       - name: Auth to Google Cloud (WIF)
         uses: google-github-actions/auth@v2
         with:
@@ -57,7 +57,7 @@ jobs:
         with:
           project_id: ${{ vars.GCP_PROJECT_ID }}
 
-      # --- DEPLOY Cloud Run из apps/api ---
+      # DEPLOY Cloud Run из apps/api
       - name: Deploy Cloud Run (apps/api)
         env:
           PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
@@ -69,7 +69,7 @@ jobs:
           gcloud config set project "$PROJECT_ID"
           gcloud config set run/region "$REGION"
 
-          # деплой из исходников (Cloud Build соберёт образ)
+          # deploy from source path
           gcloud run deploy "$SERVICE" \
             --source apps/api \
             --allow-unauthenticated \
@@ -81,7 +81,7 @@ jobs:
           URL="$(gcloud run services describe "$SERVICE" --format='value(status.url)')"
           echo "$URL" > cloud_run_url.txt
 
-      # --- Сохраняем результат в репозиторий файлами (без UI Actions) ---
+      # Сохраняем результаты в репозиторий (upsert через GitHub API)
       - name: Write outputs into repo (commit via API)
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
@@ -110,30 +110,34 @@ jobs:
           upsert "ops/supervisor/cloud_run_url.txt" "ops(supervisor): write cloud_run_url"
           upsert "ops/supervisor/last_run.json"     "ops(supervisor): write last_run json"
 
-      # --- (Опционально) Обновляем Vercel preview env, если заданы токен/проект ---
+      # Обновляем Vercel env БЕЗ if: используем проверку внутри bash
       - name: Update Vercel env (optional)
-        if: ${{ secrets.VERCEL_TOKEN != '' && vars.VERCEL_PROJECT != '' }}
         env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_PROJECT: ${{ vars.VERCEL_PROJECT }}
           VERCEL_TEAM_ID: ${{ vars.VERCEL_TEAM_ID }}
         run: |
           set -e
-          URL="$(cat cloud_run_url.txt)"
-          API="https://api.vercel.com/v10/projects/${VERCEL_PROJECT}/env"
-          TEAM="${VERCEL_TEAM_ID:+?teamId=${VERCEL_TEAM_ID}}"
-          body=$(jq -c --arg url "$URL" '{key:"NEXT_PUBLIC_API_BASE_URL", value:$url, target:["preview"]}')
-          curl -fsS -X POST "${API}${TEAM}" \
-            -H "Authorization: Bearer ${VERCEL_TOKEN}" \
-            -H "Content-Type: application/json" \
-            -d "$body" || true
+          if [ -n "${VERCEL_TOKEN}" ] && [ -n "${VERCEL_PROJECT}" ]; then
+            URL="$(cat cloud_run_url.txt)"
+            API="https://api.vercel.com/v10/projects/${VERCEL_PROJECT}/env"
+            TEAM="${VERCEL_TEAM_ID:+?teamId=${VERCEL_TEAM_ID}}"
+            body=$(jq -c --arg url "$URL" '{key:"NEXT_PUBLIC_API_BASE_URL", value:$url, target:["preview"]}')
+            curl -fsS -X POST "${API}${TEAM}" \
+              -H "Authorization: Bearer ${VERCEL_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "$body" || true
+            echo "Vercel env update attempted."
+          else
+            echo "Skip Vercel: VERCEL_TOKEN or VERCEL_PROJECT not set."
+          fi
 
-      # --- Финальный комментарий в PR #9 (best-effort) ---
+      # Финальный комментарий (best-effort)
       - name: Comment Cloud Run URL to PR #9
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
         run: |
-          set -e
           URL="$(cat cloud_run_url.txt)"
           gh api repos/${{ github.repository }}/issues/9/comments \
             -f body="Cloud Run URL: ${URL}\nSaved at ops/supervisor/cloud_run_url.txt" || true
