@@ -1,5 +1,5 @@
-=== Converge 2025-08-22T18:06:09Z ===
-repo=Ede-story/edestory-platform sha=e4e6d8a3fa13df39a0b7ad7a953d7b1de5873c56
+=== Converge 2025-08-22T18:20:19Z ===
+repo=Ede-story/edestory-platform sha=7c5e0c72d82dc1c147f2b7d658a1743dafe5f8ac
 git push via GH_PAT enabled
-Building europe-west1-docker.pkg.dev/rosy-stronghold-467817-k6/diary-registry/diary-api:converge-17 from apps/api …
+Building europe-west1-docker.pkg.dev/rosy-stronghold-467817-k6/diary-registry/diary-api:converge-18 from apps/api …
 ERROR: (gcloud.builds.submit) The user is forbidden from accessing the bucket [rosy-stronghold-467817-k6_cloudbuild]. Please check your organization's policy or if the user has the "serviceusage.services.use" permission. Giving the user a role with this permission such as Service Usage Admin may fix this issue. Alternatively, use the --no-source option and access your source code via a different method.
