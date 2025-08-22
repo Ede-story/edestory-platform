@@ -1,5 +1,243 @@
-=== Converge 2025-08-22T18:20:19Z ===
-repo=Ede-story/edestory-platform sha=7c5e0c72d82dc1c147f2b7d658a1743dafe5f8ac
+=== Converge 2025-08-22T18:40:07Z ===
+repo=Ede-story/edestory-platform sha=6627118d2610c5e35f0b8cd9dff3dcae12d0cbbf
 git push via GH_PAT enabled
-Building europe-west1-docker.pkg.dev/rosy-stronghold-467817-k6/diary-registry/diary-api:converge-18 from apps/api …
-ERROR: (gcloud.builds.submit) The user is forbidden from accessing the bucket [rosy-stronghold-467817-k6_cloudbuild]. Please check your organization's policy or if the user has the "serviceusage.services.use" permission. Giving the user a role with this permission such as Service Usage Admin may fix this issue. Alternatively, use the --no-source option and access your source code via a different method.
+Building europe-west1-docker.pkg.dev/rosy-stronghold-467817-k6/diary-registry/diary-api:converge-19 from apps/api …
+Creating temporary archive of 3 file(s) totalling 864 bytes before compression.
+Uploading tarball of [apps/api] to [gs://buildsrc-49781379815-euw1/source/1755888032.522592-cb8a943ef40a453abf4fa8b8c3f6beba.tgz]
+Created [https://cloudbuild.googleapis.com/v1/projects/rosy-stronghold-467817-k6/locations/global/builds/85d383cb-263b-4fc3-bd7a-328fdef6c11e].
+Logs are available at [ https://console.cloud.google.com/cloud-build/builds/85d383cb-263b-4fc3-bd7a-328fdef6c11e?project=49781379815 ].
+Waiting for build to complete. Polling interval: 1 second(s).
+----------------------------- REMOTE BUILD OUTPUT ------------------------------
+starting build "85d383cb-263b-4fc3-bd7a-328fdef6c11e"
+
+FETCHSOURCE
+Fetching storage object: gs://buildsrc-49781379815-euw1/source/1755888032.522592-cb8a943ef40a453abf4fa8b8c3f6beba.tgz#1755888032925504
+Copying gs://buildsrc-49781379815-euw1/source/1755888032.522592-cb8a943ef40a453abf4fa8b8c3f6beba.tgz#1755888032925504...
+/ [0 files][    0.0 B/  751.0 B]                                                -- [1 files][  751.0 B/  751.0 B]                                                
+Operation completed over 1 objects/751.0 B.
+BUILD
+Already have image (with digest): gcr.io/cloud-builders/docker
+Sending build context to Docker daemon  4.608kB
+Step 1/7 : FROM python:3.11-slim
+3.11-slim: Pulling from library/python
+396b1da7636e: Already exists
+fcec5a125fd8: Pulling fs layer
+a27cb4be7017: Pulling fs layer
+1961ca026b04: Pulling fs layer
+fcec5a125fd8: Verifying Checksum
+fcec5a125fd8: Download complete
+1961ca026b04: Verifying Checksum
+1961ca026b04: Download complete
+fcec5a125fd8: Pull complete
+a27cb4be7017: Verifying Checksum
+a27cb4be7017: Download complete
+a27cb4be7017: Pull complete
+1961ca026b04: Pull complete
+Digest: sha256:1d6131b5d479888b43200645e03a78443c7157efbdb730e6b48129740727c312
+Status: Downloaded newer image for python:3.11-slim
+ ---> 2ba2e944f9cd
+Step 2/7 : WORKDIR /app
+ ---> Running in bfe9b5f288fc
+Removing intermediate container bfe9b5f288fc
+ ---> e41281aec4c7
+Step 3/7 : ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+ ---> Running in 6bcd66675c38
+Removing intermediate container 6bcd66675c38
+ ---> e05ed86f2d7a
+Step 4/7 : COPY requirements.txt .
+ ---> 8cb9c55d1bcb
+Step 5/7 : RUN pip install --no-cache-dir -r requirements.txt
+ ---> Running in 82025fd8a988
+Collecting fastapi==0.111.0 (from -r requirements.txt (line 1))
+  Downloading fastapi-0.111.0-py3-none-any.whl.metadata (25 kB)
+Collecting uvicorn==0.27.1 (from uvicorn[standard]==0.27.1->-r requirements.txt (line 2))
+  Downloading uvicorn-0.27.1-py3-none-any.whl.metadata (6.3 kB)
+Collecting pydantic>=2.0 (from -r requirements.txt (line 3))
+  Downloading pydantic-2.11.7-py3-none-any.whl.metadata (67 kB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 68.0/68.0 kB 5.0 MB/s eta 0:00:00
+Collecting starlette<0.38.0,>=0.37.2 (from fastapi==0.111.0->-r requirements.txt (line 1))
+  Downloading starlette-0.37.2-py3-none-any.whl.metadata (5.9 kB)
+Collecting typing-extensions>=4.8.0 (from fastapi==0.111.0->-r requirements.txt (line 1))
+  Downloading typing_extensions-4.14.1-py3-none-any.whl.metadata (3.0 kB)
+Collecting fastapi-cli>=0.0.2 (from fastapi==0.111.0->-r requirements.txt (line 1))
+  Downloading fastapi_cli-0.0.8-py3-none-any.whl.metadata (6.3 kB)
+Collecting httpx>=0.23.0 (from fastapi==0.111.0->-r requirements.txt (line 1))
+  Downloading httpx-0.28.1-py3-none-any.whl.metadata (7.1 kB)
+Collecting jinja2>=2.11.2 (from fastapi==0.111.0->-r requirements.txt (line 1))
+  Downloading jinja2-3.1.6-py3-none-any.whl.metadata (2.9 kB)
+Collecting python-multipart>=0.0.7 (from fastapi==0.111.0->-r requirements.txt (line 1))
+  Downloading python_multipart-0.0.20-py3-none-any.whl.metadata (1.8 kB)
+Collecting ujson!=4.0.2,!=4.1.0,!=4.2.0,!=4.3.0,!=5.0.0,!=5.1.0,>=4.0.1 (from fastapi==0.111.0->-r requirements.txt (line 1))
+  Downloading ujson-5.11.0-cp311-cp311-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl.metadata (9.4 kB)
+Collecting orjson>=3.2.1 (from fastapi==0.111.0->-r requirements.txt (line 1))
+  Downloading orjson-3.11.2-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (1.2 kB)
+Collecting email_validator>=2.0.0 (from fastapi==0.111.0->-r requirements.txt (line 1))
+  Downloading email_validator-2.2.0-py3-none-any.whl.metadata (25 kB)
+Collecting click>=7.0 (from uvicorn==0.27.1->uvicorn[standard]==0.27.1->-r requirements.txt (line 2))
+  Downloading click-8.2.1-py3-none-any.whl.metadata (2.5 kB)
+Collecting h11>=0.8 (from uvicorn==0.27.1->uvicorn[standard]==0.27.1->-r requirements.txt (line 2))
+  Downloading h11-0.16.0-py3-none-any.whl.metadata (8.3 kB)
+Collecting httptools>=0.5.0 (from uvicorn[standard]==0.27.1->-r requirements.txt (line 2))
+  Downloading httptools-0.6.4-cp311-cp311-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (3.6 kB)
+Collecting python-dotenv>=0.13 (from uvicorn[standard]==0.27.1->-r requirements.txt (line 2))
+  Downloading python_dotenv-1.1.1-py3-none-any.whl.metadata (24 kB)
+Collecting pyyaml>=5.1 (from uvicorn[standard]==0.27.1->-r requirements.txt (line 2))
+  Downloading PyYAML-6.0.2-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (2.1 kB)
+Collecting uvloop!=0.15.0,!=0.15.1,>=0.14.0 (from uvicorn[standard]==0.27.1->-r requirements.txt (line 2))
+  Downloading uvloop-0.21.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (4.9 kB)
+Collecting watchfiles>=0.13 (from uvicorn[standard]==0.27.1->-r requirements.txt (line 2))
+  Downloading watchfiles-1.1.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (4.9 kB)
+Collecting websockets>=10.4 (from uvicorn[standard]==0.27.1->-r requirements.txt (line 2))
+  Downloading websockets-15.0.1-cp311-cp311-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (6.8 kB)
+Collecting annotated-types>=0.6.0 (from pydantic>=2.0->-r requirements.txt (line 3))
+  Downloading annotated_types-0.7.0-py3-none-any.whl.metadata (15 kB)
+Collecting pydantic-core==2.33.2 (from pydantic>=2.0->-r requirements.txt (line 3))
+  Downloading pydantic_core-2.33.2-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (6.8 kB)
+Collecting typing-inspection>=0.4.0 (from pydantic>=2.0->-r requirements.txt (line 3))
+  Downloading typing_inspection-0.4.1-py3-none-any.whl.metadata (2.6 kB)
+Collecting dnspython>=2.0.0 (from email_validator>=2.0.0->fastapi==0.111.0->-r requirements.txt (line 1))
+  Downloading dnspython-2.7.0-py3-none-any.whl.metadata (5.8 kB)
+Collecting idna>=2.0.0 (from email_validator>=2.0.0->fastapi==0.111.0->-r requirements.txt (line 1))
+  Downloading idna-3.10-py3-none-any.whl.metadata (10 kB)
+Collecting typer>=0.15.1 (from fastapi-cli>=0.0.2->fastapi==0.111.0->-r requirements.txt (line 1))
+  Downloading typer-0.16.1-py3-none-any.whl.metadata (15 kB)
+Collecting rich-toolkit>=0.14.8 (from fastapi-cli>=0.0.2->fastapi==0.111.0->-r requirements.txt (line 1))
+  Downloading rich_toolkit-0.15.0-py3-none-any.whl.metadata (1.0 kB)
+Collecting anyio (from httpx>=0.23.0->fastapi==0.111.0->-r requirements.txt (line 1))
+  Downloading anyio-4.10.0-py3-none-any.whl.metadata (4.0 kB)
+Collecting certifi (from httpx>=0.23.0->fastapi==0.111.0->-r requirements.txt (line 1))
+  Downloading certifi-2025.8.3-py3-none-any.whl.metadata (2.4 kB)
+Collecting httpcore==1.* (from httpx>=0.23.0->fastapi==0.111.0->-r requirements.txt (line 1))
+  Downloading httpcore-1.0.9-py3-none-any.whl.metadata (21 kB)
+Collecting MarkupSafe>=2.0 (from jinja2>=2.11.2->fastapi==0.111.0->-r requirements.txt (line 1))
+  Downloading MarkupSafe-3.0.2-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (4.0 kB)
+Collecting sniffio>=1.1 (from anyio->httpx>=0.23.0->fastapi==0.111.0->-r requirements.txt (line 1))
+  Downloading sniffio-1.3.1-py3-none-any.whl.metadata (3.9 kB)
+Collecting rich>=13.7.1 (from rich-toolkit>=0.14.8->fastapi-cli>=0.0.2->fastapi==0.111.0->-r requirements.txt (line 1))
+  Downloading rich-14.1.0-py3-none-any.whl.metadata (18 kB)
+Collecting shellingham>=1.3.0 (from typer>=0.15.1->fastapi-cli>=0.0.2->fastapi==0.111.0->-r requirements.txt (line 1))
+  Downloading shellingham-1.5.4-py2.py3-none-any.whl.metadata (3.5 kB)
+Collecting markdown-it-py>=2.2.0 (from rich>=13.7.1->rich-toolkit>=0.14.8->fastapi-cli>=0.0.2->fastapi==0.111.0->-r requirements.txt (line 1))
+  Downloading markdown_it_py-4.0.0-py3-none-any.whl.metadata (7.3 kB)
+Collecting pygments<3.0.0,>=2.13.0 (from rich>=13.7.1->rich-toolkit>=0.14.8->fastapi-cli>=0.0.2->fastapi==0.111.0->-r requirements.txt (line 1))
+  Downloading pygments-2.19.2-py3-none-any.whl.metadata (2.5 kB)
+Collecting mdurl~=0.1 (from markdown-it-py>=2.2.0->rich>=13.7.1->rich-toolkit>=0.14.8->fastapi-cli>=0.0.2->fastapi==0.111.0->-r requirements.txt (line 1))
+  Downloading mdurl-0.1.2-py3-none-any.whl.metadata (1.6 kB)
+Downloading fastapi-0.111.0-py3-none-any.whl (91 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 92.0/92.0 kB 51.9 MB/s eta 0:00:00
+Downloading uvicorn-0.27.1-py3-none-any.whl (60 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 60.8/60.8 kB 171.1 MB/s eta 0:00:00
+Downloading pydantic-2.11.7-py3-none-any.whl (444 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 444.8/444.8 kB 29.0 MB/s eta 0:00:00
+Downloading pydantic_core-2.33.2-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (2.0 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.0/2.0 MB 81.0 MB/s eta 0:00:00
+Downloading annotated_types-0.7.0-py3-none-any.whl (13 kB)
+Downloading click-8.2.1-py3-none-any.whl (102 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 102.2/102.2 kB 254.8 MB/s eta 0:00:00
+Downloading email_validator-2.2.0-py3-none-any.whl (33 kB)
+Downloading fastapi_cli-0.0.8-py3-none-any.whl (10 kB)
+Downloading h11-0.16.0-py3-none-any.whl (37 kB)
+Downloading httptools-0.6.4-cp311-cp311-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl (459 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 459.8/459.8 kB 264.8 MB/s eta 0:00:00
+Downloading httpx-0.28.1-py3-none-any.whl (73 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 73.5/73.5 kB 223.0 MB/s eta 0:00:00
+Downloading httpcore-1.0.9-py3-none-any.whl (78 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 78.8/78.8 kB 214.2 MB/s eta 0:00:00
+Downloading jinja2-3.1.6-py3-none-any.whl (134 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 134.9/134.9 kB 211.0 MB/s eta 0:00:00
+Downloading orjson-3.11.2-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (121 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 121.1/121.1 kB 150.5 MB/s eta 0:00:00
+Downloading python_dotenv-1.1.1-py3-none-any.whl (20 kB)
+Downloading python_multipart-0.0.20-py3-none-any.whl (24 kB)
+Downloading PyYAML-6.0.2-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (762 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 763.0/763.0 kB 246.2 MB/s eta 0:00:00
+Downloading starlette-0.37.2-py3-none-any.whl (71 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 71.9/71.9 kB 175.8 MB/s eta 0:00:00
+Downloading typing_extensions-4.14.1-py3-none-any.whl (43 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 43.9/43.9 kB 197.8 MB/s eta 0:00:00
+Downloading typing_inspection-0.4.1-py3-none-any.whl (14 kB)
+Downloading ujson-5.11.0-cp311-cp311-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl (57 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 57.3/57.3 kB 202.4 MB/s eta 0:00:00
+Downloading uvloop-0.21.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (4.0 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.0/4.0 MB 221.3 MB/s eta 0:00:00
+Downloading watchfiles-1.1.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (453 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 453.1/453.1 kB 259.4 MB/s eta 0:00:00
+Downloading websockets-15.0.1-cp311-cp311-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl (182 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 182.3/182.3 kB 265.5 MB/s eta 0:00:00
+Downloading anyio-4.10.0-py3-none-any.whl (107 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 107.2/107.2 kB 213.2 MB/s eta 0:00:00
+Downloading dnspython-2.7.0-py3-none-any.whl (313 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 313.6/313.6 kB 250.7 MB/s eta 0:00:00
+Downloading idna-3.10-py3-none-any.whl (70 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 70.4/70.4 kB 187.9 MB/s eta 0:00:00
+Downloading MarkupSafe-3.0.2-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (23 kB)
+Downloading rich_toolkit-0.15.0-py3-none-any.whl (29 kB)
+Downloading typer-0.16.1-py3-none-any.whl (46 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 46.4/46.4 kB 187.8 MB/s eta 0:00:00
+Downloading certifi-2025.8.3-py3-none-any.whl (161 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 161.2/161.2 kB 256.2 MB/s eta 0:00:00
+Downloading rich-14.1.0-py3-none-any.whl (243 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 243.4/243.4 kB 178.7 MB/s eta 0:00:00
+Downloading shellingham-1.5.4-py2.py3-none-any.whl (9.8 kB)
+Downloading sniffio-1.3.1-py3-none-any.whl (10 kB)
+Downloading markdown_it_py-4.0.0-py3-none-any.whl (87 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 87.3/87.3 kB 213.1 MB/s eta 0:00:00
+Downloading pygments-2.19.2-py3-none-any.whl (1.2 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.2/1.2 MB 171.4 MB/s eta 0:00:00
+Downloading mdurl-0.1.2-py3-none-any.whl (10.0 kB)
+Installing collected packages: websockets, uvloop, ujson, typing-extensions, sniffio, shellingham, pyyaml, python-multipart, python-dotenv, pygments, orjson, mdurl, MarkupSafe, idna, httptools, h11, dnspython, click, certifi, annotated-types, uvicorn, typing-inspection, pydantic-core, markdown-it-py, jinja2, httpcore, email_validator, anyio, watchfiles, starlette, rich, pydantic, httpx, typer, rich-toolkit, fastapi-cli, fastapi
+Successfully installed MarkupSafe-3.0.2 annotated-types-0.7.0 anyio-4.10.0 certifi-2025.8.3 click-8.2.1 dnspython-2.7.0 email_validator-2.2.0 fastapi-0.111.0 fastapi-cli-0.0.8 h11-0.16.0 httpcore-1.0.9 httptools-0.6.4 httpx-0.28.1 idna-3.10 jinja2-3.1.6 markdown-it-py-4.0.0 mdurl-0.1.2 orjson-3.11.2 pydantic-2.11.7 pydantic-core-2.33.2 pygments-2.19.2 python-dotenv-1.1.1 python-multipart-0.0.20 pyyaml-6.0.2 rich-14.1.0 rich-toolkit-0.15.0 shellingham-1.5.4 sniffio-1.3.1 starlette-0.37.2 typer-0.16.1 typing-extensions-4.14.1 typing-inspection-0.4.1 ujson-5.11.0 uvicorn-0.27.1 uvloop-0.21.0 watchfiles-1.1.0 websockets-15.0.1
+[91mWARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv
+[0m[91m
+[notice] A new release of pip is available: 24.0 -> 25.2
+[notice] To update, run: pip install --upgrade pip
+[0mRemoving intermediate container 82025fd8a988
+ ---> 45ce84627b0b
+Step 6/7 : COPY . .
+ ---> 32de656c1ba0
+Step 7/7 : CMD ["sh","-c","uvicorn main:app --host=0.0.0.0 --port=${PORT:-8080}"]
+ ---> Running in 89c078f6f32c
+Removing intermediate container 89c078f6f32c
+ ---> 7c2e0b6c13f6
+Successfully built 7c2e0b6c13f6
+Successfully tagged europe-west1-docker.pkg.dev/rosy-stronghold-467817-k6/diary-registry/diary-api:converge-19
+PUSH
+Pushing europe-west1-docker.pkg.dev/rosy-stronghold-467817-k6/diary-registry/diary-api:converge-19
+The push refers to repository [europe-west1-docker.pkg.dev/rosy-stronghold-467817-k6/diary-registry/diary-api]
+e18b5683426b: Preparing
+c073c6318ed4: Preparing
+24d48cdfbc4b: Preparing
+db819905409c: Preparing
+41a3f3e0352a: Preparing
+027e5044d8c1: Preparing
+a0f52cec0ae9: Preparing
+e6a3842ebc7f: Preparing
+027e5044d8c1: Waiting
+a0f52cec0ae9: Waiting
+e6a3842ebc7f: Waiting
+41a3f3e0352a: Layer already exists
+027e5044d8c1: Layer already exists
+a0f52cec0ae9: Layer already exists
+db819905409c: Pushed
+24d48cdfbc4b: Pushed
+e18b5683426b: Pushed
+c073c6318ed4: Pushed
+e6a3842ebc7f: Pushed
+converge-19: digest: sha256:871d8130da3b0444fceed0a9e0d29048fe54966098123670aed0ea727236b530 size: 1992
+DONE
+--------------------------------------------------------------------------------
+ID                                    CREATE_TIME                DURATION  SOURCE                                                                                        IMAGES                                                                                      STATUS
+85d383cb-263b-4fc3-bd7a-328fdef6c11e  2025-08-22T18:40:33+00:00  47S       gs://buildsrc-49781379815-euw1/source/1755888032.522592-cb8a943ef40a453abf4fa8b8c3f6beba.tgz  europe-west1-docker.pkg.dev/rosy-stronghold-467817-k6/diary-registry/diary-api:converge-19  SUCCESS
+Build done: europe-west1-docker.pkg.dev/rosy-stronghold-467817-k6/diary-registry/diary-api:converge-19
+Deploying diary-api-preview using europe-west1-docker.pkg.dev/rosy-stronghold-467817-k6/diary-registry/diary-api:converge-19 …
+Updated property [run/region].
+Deploying container to Cloud Run service [diary-api-preview] in project [rosy-stronghold-467817-k6] region [europe-west1]
+Deploying...
+Setting IAM Policy.............................done
+Creating Revision................................................................................................done
+Routing traffic.....done
+Done.
+Service [diary-api-preview] revision [diary-api-preview-00002-jqk] has been deployed and is serving 100 percent of traffic.
+Service URL: https://diary-api-preview-49781379815.europe-west1.run.app
+https://diary-api-preview-rwa4ofq7sa-ew.a.run.app
+Cloud Run URL: https://diary-api-preview-rwa4ofq7sa-ew.a.run.app
