@@ -1,4 +1,4 @@
-name: EDEstory Converge (Cloud Build → Cloud Run → save URL/log)
+name: EDEstory Converge (Cloud Build → Cloud Run → save URL & log)
 
 on:
   push:
@@ -18,7 +18,7 @@ jobs:
   converge:
     runs-on: ubuntu-latest
     env:
-      GH_PAT: ${{ secrets.GH_PAT }}                 # classic PAT (scopes: repo, workflow)
+      GH_PAT: ${{ secrets.GH_PAT }}             # classic PAT (repo, workflow)
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       WIF_PROVIDER:   ${{ vars.WIF_PROVIDER }}
       GCP_SA_EMAIL:   ${{ vars.GCP_SA_EMAIL }}
@@ -45,6 +45,20 @@ jobs:
           else
             echo "::warning::GH_PAT not set; will try GITHUB_TOKEN" | tee -a "$LOG"
           fi
+          # helper to upsert file via API (вдруг git push откажет)
+          cat > upsert.sh <<'UP'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          PATH_TO="$1"; MSG="$2"
+          content=$(base64 "$PATH_TO" | tr -d '\n')
+          sha=$(gh api repos/${GITHUB_REPOSITORY}/contents/$PATH_TO --jq .sha 2>/dev/null || echo "")
+          if [ -n "$sha" ]; then
+            gh api -X PUT repos/${GITHUB_REPOSITORY}/contents/$PATH_TO -f message="$MSG" -f content="$content" -f sha="$sha" -f branch="${GITHUB_REF_NAME}"
+          else
+            gh api -X PUT repos/${GITHUB_REPOSITORY}/contents/$PATH_TO -f message="$MSG" -f content="$content" -f branch="${GITHUB_REF_NAME}"
+          fi
+          UP
+          chmod +x upsert.sh
 
       - name: Auth to Google Cloud (WIF)
         uses: google-github-actions/auth@v2
@@ -57,7 +71,7 @@ jobs:
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
 
-      - name: Build image with Cloud Build
+      - name: Build image with Cloud Build (log)
         shell: bash
         run: |
           set -euo pipefail
@@ -67,9 +81,10 @@ jobs:
             echo "Building ${IMAGE} from apps/api …"
             gcloud builds submit apps/api --tag "${IMAGE}"
             echo "Build done: ${IMAGE}"
+            echo "${IMAGE}" > ops/supervisor/image.txt
           } 2>&1 | tee -a "$LOG"
 
-      - name: Deploy Cloud Run with built image
+      - name: Deploy Cloud Run with built image (log)
         shell: bash
         run: |
           set -euo pipefail
@@ -82,9 +97,7 @@ jobs:
               --image "${IMAGE}" \
               --allow-unauthenticated \
               --quiet \
-              --update-env-vars PORT=8080 \
-              --set-secrets DIARY_TOKEN=projects/${GCP_PROJECT_ID}/secrets/preview-DIARY_TOKEN:latest \
-              --set-secrets DATABASE_URL=projects/${GCP_PROJECT_ID}/secrets/preview-DATABASE_URL:latest
+              --set-secrets DIARY_TOKEN=preview-DIARY_TOKEN:latest,DATABASE_URL=preview-DATABASE_URL:latest
             URL="$(gcloud run services describe "${SERVICE}" --format='value(status.url)')"
             echo "$URL" | tee cloud_run_url.txt
             echo "$URL" > ops/supervisor/cloud_run_url.txt
@@ -92,16 +105,29 @@ jobs:
             echo "Cloud Run URL: $URL"
           } 2>&1 | tee -a "$LOG"
 
-      - name: Push log & outputs to repo (always)
+      - name: Upload converge log as artifact (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: edestory-converge-log
+          path: ops/supervisor/last_run.log
+
+      - name: Push log & outputs to repo (always; try git, then gh api)
         if: always()
         shell: bash
         run: |
           set -euo pipefail
+          # попытка git push
           git add ops/supervisor/last_run.log ops/supervisor/last_run.json || true
           [ -f ops/supervisor/cloud_run_url.txt ] && git add ops/supervisor/cloud_run_url.txt || true
           git commit -m "ops(converge): save log/outputs" || true
           git push origin HEAD:${GITHUB_REF_NAME} || true
-          # kick
+          # если git push не прошёл (нет GH_PAT), положим через API (gh)
+          export GH_TOKEN="${GH_PAT:-$GITHUB_TOKEN}"
+          ./upsert.sh ops/supervisor/last_run.log "ops(converge): upsert log via API" || true
+          [ -f ops/supervisor/cloud_run_url.txt ] && ./upsert.sh ops/supervisor/cloud_run_url.txt "ops(converge): upsert url via API" || true
+          ./upsert.sh ops/supervisor/last_run.json "ops(converge): upsert json via API" || true
+
           
 
 
