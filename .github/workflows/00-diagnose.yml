@@ -112,4 +112,6 @@ jobs:
           git add ops/diagnose/last_run.log ops/diagnose/run-${GITHUB_RUN_NUMBER}.log || true
           git commit -m "ops(diagnose): save last_run.log (run ${GITHUB_RUN_NUMBER})" || true
           git push || true
+          ops/diagnose/
+
 
