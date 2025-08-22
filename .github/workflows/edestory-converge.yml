@@ -1,4 +1,4 @@
-name: EDEstory Converge (Cloud Run → write URL into repo)
+name: EDEstory Converge (Preflight → Cloud Run → Save URL)
 
 on:
   push:
@@ -21,7 +21,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Create GitHub App token
+      # --- PREFLIGHT: проверяем, что заданы Vars и генерится App-токен ---
+      - name: Preflight – print App vars (masked)
+        run: |
+          echo "GH_APP_ID=${GH_APP_ID:-MISSING}"
+          echo "GH_INSTALLATION_ID=${GH_INSTALLATION_ID:-MISSING}"
+        env:
+          GH_APP_ID: ${{ vars.GH_APP_ID }}
+          GH_INSTALLATION_ID: ${{ vars.GH_INSTALLATION_ID }}
+
+      - name: Create GitHub App token (must succeed)
         id: app
         uses: actions/create-github-app-token@v1
         with:
@@ -29,6 +38,14 @@ jobs:
           private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
           installation-id: ${{ vars.GH_INSTALLATION_ID }}
 
+      - name: Smoke – use token to comment PR #9
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          gh api repos/${{ github.repository }}/issues/9/comments \
+            -f body="App token OK (preflight). Proceeding to deploy…" || exit 1
+
+      # --- GCP AUTH (WIF) + gcloud ---
       - name: Auth to Google Cloud (WIF)
         uses: google-github-actions/auth@v2
         with:
@@ -40,6 +57,7 @@ jobs:
         with:
           project_id: ${{ vars.GCP_PROJECT_ID }}
 
+      # --- DEPLOY Cloud Run из apps/api ---
       - name: Deploy Cloud Run (apps/api)
         env:
           PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
@@ -51,6 +69,7 @@ jobs:
           gcloud config set project "$PROJECT_ID"
           gcloud config set run/region "$REGION"
 
+          # деплой из исходников (Cloud Build соберёт образ)
           gcloud run deploy "$SERVICE" \
             --source apps/api \
             --allow-unauthenticated \
@@ -62,20 +81,21 @@ jobs:
           URL="$(gcloud run services describe "$SERVICE" --format='value(status.url)')"
           echo "$URL" > cloud_run_url.txt
 
+      # --- Сохраняем результат в репозиторий файлами (без UI Actions) ---
       - name: Write outputs into repo (commit via API)
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
+        shell: bash
         run: |
           set -e
           mkdir -p ops/supervisor
           cp cloud_run_url.txt ops/supervisor/cloud_run_url.txt
-          printf '{"cloud_run_url":"%s","ts":"%s"}\n' "$(cat cloud_run_url.txt)" "$(date -u +%FT%TZ)" > ops/supervisor/last_run.json
+          printf '{"cloud_run_url":"%s","ts":"%s"}\n' "$(cat ops/supervisor/cloud_run_url.txt)" "$(date -u +%FT%TZ)" > ops/supervisor/last_run.json
 
-          # upsert helper
-          upsert() {
+          upsert () {
             local path="$1"
             local msg="$2"
-            local sha=""
+            local sha
             sha=$(gh api repos/${{ github.repository }}/contents/$path --jq .sha 2>/dev/null || echo "")
             content=$(base64 -w0 "$path" 2>/dev/null || base64 "$path")
             if [ -n "$sha" ]; then
@@ -86,15 +106,34 @@ jobs:
                 -f message="$msg" -f content="$content" -f branch="${{ github.ref_name }}"
             fi
           }
-          upsert "ops/supervisor/cloud_run_url.txt" "ops(supervisor): write cloud_run_url"
-          upsert "ops/supervisor/last_run.json" "ops(supervisor): write last_run json"
 
-      - name: Comment Cloud Run URL to PR #9 (best-effort)
+          upsert "ops/supervisor/cloud_run_url.txt" "ops(supervisor): write cloud_run_url"
+          upsert "ops/supervisor/last_run.json"     "ops(supervisor): write last_run json"
+
+      # --- (Опционально) Обновляем Vercel preview env, если заданы токен/проект ---
+      - name: Update Vercel env (optional)
+        if: ${{ secrets.VERCEL_TOKEN != '' && vars.VERCEL_PROJECT != '' }}
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_PROJECT: ${{ vars.VERCEL_PROJECT }}
+          VERCEL_TEAM_ID: ${{ vars.VERCEL_TEAM_ID }}
+        run: |
+          set -e
+          URL="$(cat cloud_run_url.txt)"
+          API="https://api.vercel.com/v10/projects/${VERCEL_PROJECT}/env"
+          TEAM="${VERCEL_TEAM_ID:+?teamId=${VERCEL_TEAM_ID}}"
+          body=$(jq -c --arg url "$URL" '{key:"NEXT_PUBLIC_API_BASE_URL", value:$url, target:["preview"]}')
+          curl -fsS -X POST "${API}${TEAM}" \
+            -H "Authorization: Bearer ${VERCEL_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "$body" || true
+
+      # --- Финальный комментарий в PR #9 (best-effort) ---
+      - name: Comment Cloud Run URL to PR #9
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
         run: |
           set -e
           URL="$(cat cloud_run_url.txt)"
           gh api repos/${{ github.repository }}/issues/9/comments \
-            -f body="Cloud Run URL: ${URL}\nSaved in ops/supervisor/cloud_run_url.txt" || true
-
+            -f body="Cloud Run URL: ${URL}\nSaved at ops/supervisor/cloud_run_url.txt" || true
