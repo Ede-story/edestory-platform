@@ -1,4 +1,4 @@
-name: EDEstory Converge (diagnose → Cloud Run → save URL/log)
+name: EDEstory Converge (Preflight → Cloud Run → Save URL) — PAT
 
 on:
   push:
@@ -18,149 +18,143 @@ jobs:
   converge:
     runs-on: ubuntu-latest
     env:
-      GH_PAT: ${{ secrets.GH_PAT }}   # если PAT не используешь, можно убрать
+      GH_PAT: ${{ secrets.GH_PAT }}   # classic PAT со scope: repo, workflow
+      GH_APP_ID_VAR: ${{ vars.GH_APP_ID }}
+      GH_INSTALLATION_ID_VAR: ${{ vars.GH_INSTALLATION_ID }}
+      GCP_PROJECT_ID_VAR: ${{ vars.GCP_PROJECT_ID }}
+      WIF_PROVIDER_VAR: ${{ vars.WIF_PROVIDER }}
+      GCP_SA_EMAIL_VAR: ${{ vars.GCP_SA_EMAIL }}
+      VERCEL_PROJECT_VAR: ${{ vars.VERCEL_PROJECT }}
+      VERCEL_TEAM_ID_VAR: ${{ vars.VERCEL_TEAM_ID }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Start log & trap
-        id: trap
+      # PREFLIGHT: печатаем vars и убеждаемся, что есть PAT
+      - name: Preflight – vars & PAT
         shell: bash
         run: |
           set -euo pipefail
-          LOG=ops/supervisor/last_run.log
-          mkdir -p ops/supervisor
-          echo "=== EDEstory Converge $(date -u +%FT%TZ) ===" | tee "$LOG"
-          echo "repo=$GITHUB_REPOSITORY sha=$GITHUB_SHA" | tee -a "$LOG"
-          # trap: при выходе пишем лог и попытку upsert в репозиторий
-          cat > push_log.sh <<'PUSH'
-          #!/usr/bin/env bash
-          set -euo pipefail
-          # упаковать и записать логи/артефакты в репозиторий через GitHub API
-          sha=$(gh api repos/${GITHUB_REPOSITORY}/contents/ops/supervisor/last_run.log --jq .sha 2>/dev/null || echo "")
-          content=$(base64 ops/supervisor/last_run.log | tr -d '\n')
-          if [ -n "$sha" ]; then
-            gh api -X PUT repos/${GITHUB_REPOSITORY}/contents/ops/supervisor/last_run.log -f message="ops(supervisor): update last_run.log" -f content="$content" -f sha="$sha" -f branch="${GITHUB_REF_NAME}"
-          else
-            gh api -X PUT repos/${GITHUB_REPOSITORY}/contents/ops/supervisor/last_run.log -f message="ops(supervisor): add last_run.log" -f content="$content" -f branch="${GITHUB_REF_NAME}"
+          echo "GH_APP_ID=${GH_APP_ID_VAR:-MISSING}"
+          echo "GH_INSTALLATION_ID=${GH_INSTALLATION_ID_VAR:-MISSING}"
+          echo "GCP_PROJECT_ID=${GCP_PROJECT_ID_VAR:-MISSING}"
+          echo "WIF_PROVIDER=${WIF_PROVIDER_VAR:-MISSING}"
+          echo "GCP_SA_EMAIL=${GCP_SA_EMAIL_VAR:-MISSING}"
+          if [ -z "${GH_PAT:-}" ]; then
+            echo "::error::Missing GH_PAT secret. Create classic PAT with scopes: repo, workflow and save as GH_PAT."
+            exit 1
           fi
-          # если есть cloud_run_url.txt — аплоадим тоже
-          if [ -f ops/supervisor/cloud_run_url.txt ]; then
-            sha2=$(gh api repos/${GITHUB_REPOSITORY}/contents/ops/supervisor/cloud_run_url.txt --jq .sha 2>/dev/null || echo "")
-            content2=$(base64 ops/supervisor/cloud_run_url.txt | tr -d '\n')
-            if [ -n "$sha2" ]; then
-              gh api -X PUT repos/${GITHUB_REPOSITORY}/contents/ops/supervisor/cloud_run_url.txt -f message="ops(supervisor): update cloud_run_url" -f content="$content2" -f sha="$sha2" -f branch="${GITHUB_REF_NAME}"
-            else
-              gh api -X PUT repos/${GITHUB_REPOSITORY}/contents/ops/supervisor/cloud_run_url.txt -f message="ops(supervisor): add cloud_run_url" -f content="$content2" -f branch="${GITHUB_REF_NAME}"
-            fi
-          fi
-          PUSH
-          chmod +x push_log.sh
+          echo "GH_PAT is set."
 
-      - name: Create GH token (PAT or fallback to GITHUB_TOKEN)
-        id: authgh
-        shell: bash
-        run: |
-          if [ -n "${GH_PAT:-}" ]; then
-            echo "token=$GH_PAT" >> $GITHUB_OUTPUT
-            echo "Using GH_PAT"
-          else
-            echo "token=$GITHUB_TOKEN" >> $GITHUB_OUTPUT
-            echo "Using default GITHUB_TOKEN"
-          fi
-
-      - name: Write preflight to log
+      # Smoke: пишем комментарий в PR #9 через PAT (доказывает, что можем писать в репо)
+      - name: Smoke – comment PR #9 via PAT
         env:
-          GH_TOKEN: ${{ steps.authgh.outputs.token }}
+          GH_TOKEN: ${{ env.GH_PAT }}
+        run: |
+          gh api repos/${{ github.repository }}/issues/9/comments \
+            -f body="✅ PAT OK (preflight). Proceeding to deploy…" || exit 1
+
+      # Включаем нужные GCP API (идемпотентно)
+      - name: Enable GCP APIs
         shell: bash
         run: |
           set -euo pipefail
-          LOG=ops/supervisor/last_run.log
-          {
-            echo "GH_APP_ID=${{ vars.GH_APP_ID:-MISSING }}"
-            echo "GH_INSTALLATION_ID=${{ vars.GH_INSTALLATION_ID:-MISSING }}"
-            echo "GCP_PROJECT_ID=${{ vars.GCP_PROJECT_ID:-MISSING }}"
-            echo "WIF_PROVIDER=${{ vars.WIF_PROVIDER:-MISSING }}"
-            echo "GCP_SA_EMAIL=${{ vars.GCP_SA_EMAIL:-MISSING }}"
-          } | tee -a "$LOG"
+          gcloud config set project "${GCP_PROJECT_ID_VAR}"
+          gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com secretmanager.googleapis.com --quiet
 
-      - name: Enable GCP APIs (idempotent)
-        shell: bash
-        run: |
-          set -euo pipefail
-          LOG=ops/supervisor/last_run.log
-          {
-            echo "Enabling GCP APIs…"
-            gcloud config set project "${{ vars.GCP_PROJECT_ID }}" >/dev/null
-            gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com secretmanager.googleapis.com --quiet
-            echo "APIs enabled."
-          } | tee -a "$LOG"
-
+      # Аутентификация в GCP через WIF
       - name: Auth to Google Cloud (WIF)
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
-          service_account: ${{ vars.GCP_SA_EMAIL }}
+          workload_identity_provider: ${{ env.WIF_PROVIDER_VAR }}
+          service_account: ${{ env.GCP_SA_EMAIL_VAR }}
 
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
         with:
-          project_id: ${{ vars.GCP_PROJECT_ID }}
+          project_id: ${{ env.GCP_PROJECT_ID_VAR }}
 
-      - name: Verify secrets exist (idempotent check)
-        shell: bash
-        run: |
-          set -euo pipefail
-          LOG=ops/supervisor/last_run.log
-          {
-            echo "Checking Secret Manager versions…"
-            gcloud secrets describe preview-DIARY_TOKEN >/dev/null 2>&1 && echo "preview-DIARY_TOKEN: OK" || echo "preview-DIARY_TOKEN: MISSING"
-            gcloud secrets describe preview-DATABASE_URL >/dev/null 2>&1 && echo "preview-DATABASE_URL: OK" || echo "preview-DATABASE_URL: MISSING"
-          } | tee -a "$LOG"
-
+      # Деплой Cloud Run из apps/api
       - name: Deploy Cloud Run (apps/api)
         shell: bash
         run: |
           set -euo pipefail
-          LOG=ops/supervisor/last_run.log
-          {
-            echo "Deploying Cloud Run…"
-            REGION="europe-west1"
-            SERVICE="diary-api-preview"
-            gcloud config set project "${{ vars.GCP_PROJECT_ID }}" >/dev/null
-            gcloud config set run/region "$REGION" >/dev/null
-            gcloud run deploy "$SERVICE" \
-              --source apps/api \
-              --allow-unauthenticated \
-              --quiet \
-              --update-env-vars PORT=8080 \
-              --set-secrets DIARY_TOKEN=projects/${{ vars.GCP_PROJECT_ID }}/secrets/preview-DIARY_TOKEN:latest \
-              --set-secrets DATABASE_URL=projects/${{ vars.GCP_PROJECT_ID }}/secrets/preview-DATABASE_URL:latest
-            URL="$(gcloud run services describe "$SERVICE" --format='value(status.url)')"
-            echo "$URL" | tee cloud_run_url.txt
-            echo "$URL" > ops/supervisor/cloud_run_url.txt
-            printf '{"cloud_run_url":"%s","ts":"%s"}\n' "$URL" "$(date -u +%FT%TZ)" > ops/supervisor/last_run.json
-            echo "Cloud Run URL: $URL"
-          } | tee -a "$LOG"
+          REGION="europe-west1"
+          SERVICE="diary-api-preview"
 
-      - name: Push log & outputs to repo (always)
-        if: always()
+          gcloud config set project "${GCP_PROJECT_ID_VAR}" >/dev/null
+          gcloud config set run/region "$REGION" >/dev/null
+
+          gcloud run deploy "$SERVICE" \
+            --source apps/api \
+            --allow-unauthenticated \
+            --quiet \
+            --update-env-vars PORT=8080 \
+            --set-secrets DIARY_TOKEN=projects/${GCP_PROJECT_ID_VAR}/secrets/preview-DIARY_TOKEN:latest \
+            --set-secrets DATABASE_URL=projects/${GCP_PROJECT_ID_VAR}/secrets/preview-DATABASE_URL:latest
+
+          URL="$(gcloud run services describe "$SERVICE" --format='value(status.url)')"
+          echo "$URL" > cloud_run_url.txt
+          echo "Cloud Run URL: $URL"
+
+      # Пишем результаты в репозиторий (через GH PAT)
+      - name: Write outputs into repo (upsert via API)
         env:
-          GH_TOKEN: ${{ steps.authgh.outputs.token }}
+          GH_TOKEN: ${{ env.GH_PAT }}
         shell: bash
         run: |
           set -euo pipefail
-          ./push_log.sh
+          mkdir -p ops/supervisor
+          cp cloud_run_url.txt ops/supervisor/cloud_run_url.txt
+          printf '{"cloud_run_url":"%s","ts":"%s"}\n' "$(cat cloud_run_url.txt)" "$(date -u +%FT%TZ)" > ops/supervisor/last_run.json
 
-      - name: Comment URL in PR #9 (best-effort)
-        if: always()
+          upsert () {
+            local path="$1"; local msg="$2"
+            local sha
+            sha=$(gh api repos/${GITHUB_REPOSITORY}/contents/$path --jq .sha 2>/dev/null || echo "")
+            content=$(base64 "$path" | tr -d '\n')
+            if [ -n "$sha" ]; then
+              gh api -X PUT repos/${GITHUB_REPOSITORY}/contents/$path \
+                -f message="$msg" -f content="$content" -f sha="$sha" -f branch="${GITHUB_REF_NAME}"
+            else
+              gh api -X PUT repos/${GITHUB_REPOSITORY}/contents/$path \
+                -f message="$msg" -f content="$content" -f branch="${GITHUB_REF_NAME}"
+            fi
+          }
+
+          upsert "ops/supervisor/cloud_run_url.txt" "ops(supervisor): write cloud_run_url"
+          upsert "ops/supervisor/last_run.json"     "ops(supervisor): write last_run json"
+
+      # (Опционально) Обновить Vercel env: проверяем внутри bash, без if: выражений
+      - name: Update Vercel env (optional)
         env:
-          GH_TOKEN: ${{ steps.authgh.outputs.token }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_PROJECT: ${{ env.VERCEL_PROJECT_VAR }}
+          VERCEL_TEAM_ID: ${{ env.VERCEL_TEAM_ID_VAR }}
+        shell: bash
         run: |
-          if [ -f ops/supervisor/cloud_run_url.txt ]; then
-            URL="$(cat ops/supervisor/cloud_run_url.txt)"
-            gh api repos/${{ github.repository }}/issues/9/comments -f body="✅ Cloud Run URL: ${URL}\n(лог: ops/supervisor/last_run.log)" || true
+          set -euo pipefail
+          if [ -n "${VERCEL_TOKEN:-}" ] && [ -n "${VERCEL_PROJECT:-}" ]; then
+            URL="$(cat cloud_run_url.txt)"
+            API="https://api.vercel.com/v10/projects/${VERCEL_PROJECT}/env"
+            TEAM="${VERCEL_TEAM_ID:+?teamId=${VERCEL_TEAM_ID}}"
+            body="{\"key\":\"NEXT_PUBLIC_API_BASE_URL\",\"value\":\"${URL}\",\"target\":[\"preview\"]}"
+            curl -fsS -X POST "${API}${TEAM}" \
+              -H "Authorization: Bearer ${VERCEL_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "$body" || true
+            echo "Vercel env update attempted."
           else
-            gh api repos/${{ github.repository }}/issues/9/comments -f body="❌ Deploy failed. См. ops/supervisor/last_run.log" || true
+            echo "Skip Vercel: token/project not set."
           fi
+
+      # Финальный комментарий (best-effort)
+      - name: Comment Cloud Run URL to PR #9
+        env:
+          GH_TOKEN: ${{ env.GH_PAT }}
+        run: |
+          URL="$(cat cloud_run_url.txt)"
+          gh api repos/${{ github.repository }}/issues/9/comments \
+            -f body="Cloud Run URL: ${URL}\nSaved at ops/supervisor/cloud_run_url.txt" || true
+
 
