@@ -21,7 +21,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # PREFLIGHT: проверяем переменные и собираем App-токен
+      # PREFLIGHT: печатаем vars (маскируется Github) — просто контроль наличия
       - name: Preflight – print App vars (masked)
         run: |
           echo "GH_APP_ID=${GH_APP_ID:-MISSING}"
@@ -30,13 +30,14 @@ jobs:
           GH_APP_ID: ${{ vars.GH_APP_ID }}
           GH_INSTALLATION_ID: ${{ vars.GH_INSTALLATION_ID }}
 
+      # ВАЖНО: используем tibdex/github-app-token с installation_id
       - name: Create GitHub App token (must succeed)
         id: app
-        uses: actions/create-github-app-token@v1
+        uses: tibdex/github-app-token@v2
         with:
-          app-id: ${{ vars.GH_APP_ID }}
-          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
-          installation-id: ${{ vars.GH_INSTALLATION_ID }}
+          app_id: ${{ vars.GH_APP_ID }}
+          private_key: ${{ secrets.GH_APP_PRIVATE_KEY }}
+          installation_id: ${{ vars.GH_INSTALLATION_ID }}
 
       - name: Smoke – use token to comment PR #9
         env:
@@ -69,7 +70,7 @@ jobs:
           gcloud config set project "$PROJECT_ID"
           gcloud config set run/region "$REGION"
 
-          # deploy from source path
+          # деплой из исходников (Cloud Build)
           gcloud run deploy "$SERVICE" \
             --source apps/api \
             --allow-unauthenticated \
@@ -81,7 +82,7 @@ jobs:
           URL="$(gcloud run services describe "$SERVICE" --format='value(status.url)')"
           echo "$URL" > cloud_run_url.txt
 
-      # Сохраняем результаты в репозиторий (upsert через GitHub API)
+      # Сохраняем результат в репозиторий (upsert через GitHub API)
       - name: Write outputs into repo (commit via API)
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
@@ -110,7 +111,7 @@ jobs:
           upsert "ops/supervisor/cloud_run_url.txt" "ops(supervisor): write cloud_run_url"
           upsert "ops/supervisor/last_run.json"     "ops(supervisor): write last_run json"
 
-      # Обновляем Vercel env БЕЗ if: используем проверку внутри bash
+      # Обновление Vercel env — БЕЗ if:, проверим внутри bash
       - name: Update Vercel env (optional)
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
