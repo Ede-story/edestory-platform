@@ -136,3 +136,5 @@ jobs:
           URL="$(cat cloud_run_url.txt)"
           gh api repos/${{ github.repository }}/issues/9/comments \
             -f body="Cloud Run URL: ${URL}\nSaved at ops/supervisor/cloud_run_url.txt" || true
+            # kick
+
