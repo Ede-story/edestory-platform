@@ -18,7 +18,7 @@ jobs:
   converge:
     runs-on: ubuntu-latest
     env:
-      GH_PAT: ${{ secrets.GH_PAT }}                 # classic PAT (repo, workflow)
+      GH_PAT: ${{ secrets.GH_PAT }}                 # classic PAT (scopes: repo, workflow)
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       WIF_PROVIDER:   ${{ vars.WIF_PROVIDER }}
       GCP_SA_EMAIL:   ${{ vars.GCP_SA_EMAIL }}
@@ -37,26 +37,14 @@ jobs:
           LOG="ops/supervisor/last_run.log"
           echo "=== Converge $(date -u +%FT%TZ) ===" | tee "$LOG"
           echo "repo=$GITHUB_REPOSITORY sha=$GITHUB_SHA" | tee -a "$LOG"
-          # Настроим git push через PAT (не используем gh CLI)
           if [ -n "${GH_PAT:-}" ]; then
-            git config user.name "edestory-orchestrator[bot]"
+            git config user.name  "edestory-orchestrator[bot]"
             git config user.email "edestory-orchestrator[bot]@users.noreply.github.com"
             git remote set-url origin "https://x-access-token:${GH_PAT}@github.com/${GITHUB_REPOSITORY}.git"
             echo "git push via GH_PAT enabled" | tee -a "$LOG"
           else
-            echo "::warning::GH_PAT not set; will try GITHUB_TOKEN (может не хватить прав)" | tee -a "$LOG"
+            echo "::warning::GH_PAT not set; will try GITHUB_TOKEN" | tee -a "$LOG"
           fi
-
-      - name: Enable GCP APIs (idempotent)
-        shell: bash
-        run: |
-          set -euo pipefail
-          LOG="ops/supervisor/last_run.log"
-          {
-            gcloud config set project "${GCP_PROJECT_ID}" >/dev/null
-            gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com secretmanager.googleapis.com --quiet
-            echo "GCP APIs enabled."
-          } | tee -a "$LOG"
 
       - name: Auth to Google Cloud (WIF)
         uses: google-github-actions/auth@v2
@@ -69,16 +57,6 @@ jobs:
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
 
-      - name: Ensure secrets exist (report only)
-        shell: bash
-        run: |
-          set -euo pipefail
-          LOG="ops/supervisor/last_run.log"
-          {
-            gcloud secrets describe preview-DIARY_TOKEN >/dev/null 2>&1 && echo "preview-DIARY_TOKEN: OK" || echo "preview-DIARY_TOKEN: MISSING"
-            gcloud secrets describe preview-DATABASE_URL >/dev/null 2>&1 && echo "preview-DATABASE_URL: OK" || echo "preview-DATABASE_URL: MISSING"
-          } | tee -a "$LOG"
-
       - name: Build image with Cloud Build
         shell: bash
         run: |
@@ -89,7 +67,7 @@ jobs:
             echo "Building ${IMAGE} from apps/api …"
             gcloud builds submit apps/api --tag "${IMAGE}"
             echo "Build done: ${IMAGE}"
-          } | tee -a "$LOG"
+          } 2>&1 | tee -a "$LOG"
 
       - name: Deploy Cloud Run with built image
         shell: bash
@@ -98,7 +76,7 @@ jobs:
           LOG="ops/supervisor/last_run.log"
           {
             IMAGE="${REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${AR_REPO}/diary-api:converge-${GITHUB_RUN_NUMBER}"
-            echo "Deploying ${SERVICE} in ${REGION} using ${IMAGE} …"
+            echo "Deploying ${SERVICE} using ${IMAGE} …"
             gcloud config set run/region "${REGION}" >/dev/null
             gcloud run deploy "${SERVICE}" \
               --image "${IMAGE}" \
@@ -112,7 +90,7 @@ jobs:
             echo "$URL" > ops/supervisor/cloud_run_url.txt
             printf '{"cloud_run_url":"%s","ts":"%s"}\n' "$URL" "$(date -u +%FT%TZ)" > ops/supervisor/last_run.json
             echo "Cloud Run URL: $URL"
-          } | tee -a "$LOG"
+          } 2>&1 | tee -a "$LOG"
 
       - name: Push log & outputs to repo (always)
         if: always()
@@ -123,6 +101,7 @@ jobs:
           [ -f ops/supervisor/cloud_run_url.txt ] && git add ops/supervisor/cloud_run_url.txt || true
           git commit -m "ops(converge): save log/outputs" || true
           git push origin HEAD:${GITHUB_REF_NAME} || true
+
 
 
 
