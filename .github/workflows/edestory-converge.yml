@@ -21,32 +21,33 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # PREFLIGHT: печатаем vars (маскируется Github) — просто контроль наличия
+      # --- PREFLIGHT: печать переменных приложения (для контроля наличия) ---
       - name: Preflight – print App vars (masked)
         run: |
           echo "GH_APP_ID=${GH_APP_ID:-MISSING}"
-          echo "GH_INSTALLATION_ID=${GH_INSTALLATION_ID:-MISSING}"
+          echo "OWNER=Ede-story"
+          echo "REPO=edestory-platform"
         env:
           GH_APP_ID: ${{ vars.GH_APP_ID }}
-          GH_INSTALLATION_ID: ${{ vars.GH_INSTALLATION_ID }}
 
-      # ВАЖНО: используем tibdex/github-app-token с installation_id
+      # --- Создаём токен GitHub App БЕЗ installation_id (через owner/repositories) ---
       - name: Create GitHub App token (must succeed)
         id: app
-        uses: tibdex/github-app-token@v2
+        uses: actions/create-github-app-token@v1
         with:
-          app_id: ${{ vars.GH_APP_ID }}
-          private_key: ${{ secrets.GH_APP_PRIVATE_KEY }}
-          installation_id: ${{ vars.GH_INSTALLATION_ID }}
+          app-id: ${{ vars.GH_APP_ID }}
+          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
+          owner: Ede-story
+          repositories: edestory-platform
 
       - name: Smoke – use token to comment PR #9
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
         run: |
           gh api repos/${{ github.repository }}/issues/9/comments \
-            -f body="App token OK (preflight). Proceeding to deploy…" || exit 1
+            -f body="✅ App token OK (preflight). Proceeding to deploy…" || exit 1
 
-      # GCP AUTH (WIF) + gcloud
+      # --- Аутентификация в GCP (WIF) + gcloud ---
       - name: Auth to Google Cloud (WIF)
         uses: google-github-actions/auth@v2
         with:
@@ -58,7 +59,7 @@ jobs:
         with:
           project_id: ${{ vars.GCP_PROJECT_ID }}
 
-      # DEPLOY Cloud Run из apps/api
+      # --- Деплой Cloud Run из каталога apps/api (Cloud Build соберёт образ) ---
       - name: Deploy Cloud Run (apps/api)
         env:
           PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
@@ -70,7 +71,6 @@ jobs:
           gcloud config set project "$PROJECT_ID"
           gcloud config set run/region "$REGION"
 
-          # деплой из исходников (Cloud Build)
           gcloud run deploy "$SERVICE" \
             --source apps/api \
             --allow-unauthenticated \
@@ -82,7 +82,7 @@ jobs:
           URL="$(gcloud run services describe "$SERVICE" --format='value(status.url)')"
           echo "$URL" > cloud_run_url.txt
 
-      # Сохраняем результат в репозиторий (upsert через GitHub API)
+      # --- Записываем результаты в репозиторий (upsert через GitHub API) ---
       - name: Write outputs into repo (commit via API)
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
@@ -98,7 +98,7 @@ jobs:
             local msg="$2"
             local sha
             sha=$(gh api repos/${{ github.repository }}/contents/$path --jq .sha 2>/dev/null || echo "")
-            content=$(base64 -w0 "$path" 2>/dev/null || base64 "$path")
+            content=$(base64 "$path" | tr -d '\n')
             if [ -n "$sha" ]; then
               gh api -X PUT repos/${{ github.repository }}/contents/$path \
                 -f message="$msg" -f content="$content" -f sha="$sha" -f branch="${{ github.ref_name }}"
@@ -111,7 +111,7 @@ jobs:
           upsert "ops/supervisor/cloud_run_url.txt" "ops(supervisor): write cloud_run_url"
           upsert "ops/supervisor/last_run.json"     "ops(supervisor): write last_run json"
 
-      # Обновление Vercel env — БЕЗ if:, проверим внутри bash
+      # --- Обновление Vercel env (без if:, проверка внутри bash) ---
       - name: Update Vercel env (optional)
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
@@ -124,7 +124,7 @@ jobs:
             URL="$(cat cloud_run_url.txt)"
             API="https://api.vercel.com/v10/projects/${VERCEL_PROJECT}/env"
             TEAM="${VERCEL_TEAM_ID:+?teamId=${VERCEL_TEAM_ID}}"
-            body=$(jq -c --arg url "$URL" '{key:"NEXT_PUBLIC_API_BASE_URL", value:$url, target:["preview"]}')
+            body="{\"key\":\"NEXT_PUBLIC_API_BASE_URL\",\"value\":\"${URL}\",\"target\":[\"preview\"]}"
             curl -fsS -X POST "${API}${TEAM}" \
               -H "Authorization: Bearer ${VERCEL_TOKEN}" \
               -H "Content-Type: application/json" \
@@ -134,7 +134,7 @@ jobs:
             echo "Skip Vercel: VERCEL_TOKEN or VERCEL_PROJECT not set."
           fi
 
-      # Финальный комментарий (best-effort)
+      # --- Финальный комментарий в PR #9 (best-effort) ---
       - name: Comment Cloud Run URL to PR #9
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
