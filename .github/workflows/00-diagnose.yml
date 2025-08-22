@@ -1,0 +1,100 @@
+name: 00 Diagnose (WIF → Cloud Run dry-run → log artifact)
+
+on:
+  push:
+    branches: [ main ]
+    paths: [ ".github/workflows/00-diagnose.yml" ]
+  workflow_dispatch: {}
+
+permissions:
+  actions: read
+  contents: read
+  id-token: write
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      WIF_PROVIDER:   ${{ vars.WIF_PROVIDER }}
+      GCP_SA_EMAIL:   ${{ vars.GCP_SA_EMAIL }}
+      REGION: europe-west1
+      SERVICE: diary-api-preview
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Start log
+        run: |
+          mkdir -p diag
+          LOG=diag/diag.log
+          echo "=== DIAG $(date -u +%FT%TZ) ==="         | tee -a "$LOG"
+          echo "repo=$GITHUB_REPOSITORY sha=$GITHUB_SHA" | tee -a "$LOG"
+          echo "GCP_PROJECT_ID=${GCP_PROJECT_ID:-MISSING}" | tee -a "$LOG"
+          echo "WIF_PROVIDER=${WIF_PROVIDER:-MISSING}"     | tee -a "$LOG"
+          echo "GCP_SA_EMAIL=${GCP_SA_EMAIL:-MISSING}"     | tee -a "$LOG"
+
+      - name: Auth to GCP (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.GCP_SA_EMAIL }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+
+      - name: Enable required APIs (idempotent)
+        run: |
+          set -euxo pipefail
+          LOG=diag/diag.log
+          {
+            gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com secretmanager.googleapis.com --quiet
+            echo "APIs OK"
+          } 2>&1 | tee -a "$LOG"
+
+      - name: Quick WIF check
+        run: |
+          set -euxo pipefail
+          LOG=diag/diag.log
+          {
+            gcloud config list
+            gcloud auth list
+            gcloud iam service-accounts describe "${GCP_SA_EMAIL}" --format="value(email)"
+          } 2>&1 | tee -a "$LOG"
+
+      - name: Cloud Run describe (best-effort)
+        continue-on-error: true
+        run: |
+          set -euxo pipefail
+          LOG=diag/diag.log
+          {
+            echo "Describe existing service (may fail if not created yet)…"
+            gcloud run services describe "${SERVICE}" --region "${REGION}" --format yaml || true
+          } 2>&1 | tee -a "$LOG"
+
+      - name: Dry-run deploy from source (diagnostic)
+        continue-on-error: true
+        run: |
+          set -euxo pipefail
+          LOG=diag/diag.log
+          {
+            echo "Dry-run deploy from apps/api…"
+            gcloud run deploy "${SERVICE}" \
+              --source apps/api \
+              --region "${REGION}" \
+              --allow-unauthenticated \
+              --update-env-vars PORT=8080 \
+              --set-secrets DIARY_TOKEN=projects/${GCP_PROJECT_ID}/secrets/preview-DIARY_TOKEN:latest \
+              --set-secrets DATABASE_URL=projects/${GCP_PROJECT_ID}/secrets/preview-DATABASE_URL:latest \
+              --dry-run=client
+            echo "Dry-run OK (client-side validation passed)."
+          } 2>&1 | tee -a "$LOG"
+
+      - name: Upload diag artifact (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: edestory-diagnose-log
+          path: diag/diag.log
