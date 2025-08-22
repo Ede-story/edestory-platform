@@ -18,10 +18,10 @@ jobs:
   converge:
     runs-on: ubuntu-latest
     env:
-      GH_PAT: ${{ secrets.GH_PAT }}                 # classic PAT с repo,workflow (если есть)
+      GH_PAT: ${{ secrets.GH_PAT }}                   # classic PAT (scopes: repo, workflow)
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-      WIF_PROVIDER: ${{ vars.WIF_PROVIDER }}
-      GCP_SA_EMAIL: ${{ vars.GCP_SA_EMAIL }}
+      WIF_PROVIDER:   ${{ vars.WIF_PROVIDER }}
+      GCP_SA_EMAIL:   ${{ vars.GCP_SA_EMAIL }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -38,7 +38,6 @@ jobs:
           #!/usr/bin/env bash
           set -euo pipefail
           GH_TOKEN="${GH_PAT:-$GITHUB_TOKEN}"
-          # upsert helper
           upsert () {
             local path="$1"; local msg="$2"
             local sha; sha=$(gh api repos/${GITHUB_REPOSITORY}/contents/$path --jq .sha 2>/dev/null || echo "")
@@ -55,7 +54,7 @@ jobs:
           PUSH
           chmod +x push_log.sh
 
-      - name: Preflight (vars + optional PAT)
+      - name: Preflight (vars + PAT)
         shell: bash
         run: |
           set -euo pipefail
