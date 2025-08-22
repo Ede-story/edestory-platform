@@ -101,7 +101,8 @@ jobs:
           [ -f ops/supervisor/cloud_run_url.txt ] && git add ops/supervisor/cloud_run_url.txt || true
           git commit -m "ops(converge): save log/outputs" || true
           git push origin HEAD:${GITHUB_REF_NAME} || true
-
+          # kick
+          
 
 
 
