@@ -143,6 +143,8 @@ jobs:
           else
             gh api repos/${{ github.repository }}/issues/9/comments -f body="❌ Deploy failed. См. ops/supervisor/last_run.log" || true
           fi
+          # kick
+
 
 
 
