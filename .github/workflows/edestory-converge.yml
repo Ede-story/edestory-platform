@@ -1,4 +1,4 @@
-name: EDEstory Converge (diagnose → Cloud Run → save URL/log)
+name: EDEstory Converge (Cloud Build → Cloud Run → save URL/log)
 
 on:
   push:
@@ -18,55 +18,36 @@ jobs:
   converge:
     runs-on: ubuntu-latest
     env:
-      GH_PAT: ${{ secrets.GH_PAT }}                   # classic PAT (scopes: repo, workflow)
+      GH_PAT: ${{ secrets.GH_PAT }}                 # classic PAT (repo, workflow)
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       WIF_PROVIDER:   ${{ vars.WIF_PROVIDER }}
       GCP_SA_EMAIL:   ${{ vars.GCP_SA_EMAIL }}
+      REGION: europe-west1
+      AR_REPO: diary-registry
+      SERVICE: diary-api-preview
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Init log & trap (always upload log)
+      - name: Init log & git auth for pushing results
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p ops/supervisor
           LOG="ops/supervisor/last_run.log"
-          echo "=== EDEstory Converge $(date -u +%FT%TZ) ===" | tee "$LOG"
+          echo "=== Converge $(date -u +%FT%TZ) ===" | tee "$LOG"
           echo "repo=$GITHUB_REPOSITORY sha=$GITHUB_SHA" | tee -a "$LOG"
-          cat > push_log.sh <<'PUSH'
-          #!/usr/bin/env bash
-          set -euo pipefail
-          GH_TOKEN="${GH_PAT:-$GITHUB_TOKEN}"
-          upsert () {
-            local path="$1"; local msg="$2"
-            local sha; sha=$(gh api repos/${GITHUB_REPOSITORY}/contents/$path --jq .sha 2>/dev/null || echo "")
-            local content; content=$(base64 "$path" | tr -d '\n')
-            if [ -n "${sha}" ]; then
-              gh api -X PUT repos/${GITHUB_REPOSITORY}/contents/$path -f message="$msg" -f content="$content" -f sha="$sha" -f branch="${GITHUB_REF_NAME}"
-            else
-              gh api -X PUT repos/${GITHUB_REPOSITORY}/contents/$path -f message="$msg" -f content="$content" -f branch="${GITHUB_REF_NAME}"
-            fi
-          }
-          export GH_TOKEN
-          upsert "ops/supervisor/last_run.log" "ops(converge): write last_run.log"
-          [ -f ops/supervisor/cloud_run_url.txt ] && upsert "ops/supervisor/cloud_run_url.txt" "ops(converge): write cloud_run_url" || true
-          PUSH
-          chmod +x push_log.sh
+          # Настроим git push через PAT (не используем gh CLI)
+          if [ -n "${GH_PAT:-}" ]; then
+            git config user.name "edestory-orchestrator[bot]"
+            git config user.email "edestory-orchestrator[bot]@users.noreply.github.com"
+            git remote set-url origin "https://x-access-token:${GH_PAT}@github.com/${GITHUB_REPOSITORY}.git"
+            echo "git push via GH_PAT enabled" | tee -a "$LOG"
+          else
+            echo "::warning::GH_PAT not set; will try GITHUB_TOKEN (может не хватить прав)" | tee -a "$LOG"
+          fi
 
-      - name: Preflight (vars + PAT)
-        shell: bash
-        run: |
-          set -euo pipefail
-          LOG="ops/supervisor/last_run.log"
-          {
-            echo "GCP_PROJECT_ID=${GCP_PROJECT_ID:-MISSING}"
-            echo "WIF_PROVIDER=${WIF_PROVIDER:-MISSING}"
-            echo "GCP_SA_EMAIL=${GCP_SA_EMAIL:-MISSING}"
-            if [ -n "${GH_PAT:-}" ]; then echo "GH_PAT=SET"; else echo "GH_PAT=NOT_SET (fallback to GITHUB_TOKEN)"; fi
-          } | tee -a "$LOG"
-
-      - name: Enable GCP APIs
+      - name: Enable GCP APIs (idempotent)
         shell: bash
         run: |
           set -euo pipefail
@@ -98,52 +79,51 @@ jobs:
             gcloud secrets describe preview-DATABASE_URL >/dev/null 2>&1 && echo "preview-DATABASE_URL: OK" || echo "preview-DATABASE_URL: MISSING"
           } | tee -a "$LOG"
 
-      - name: Deploy Cloud Run (apps/api)
+      - name: Build image with Cloud Build
         shell: bash
         run: |
           set -euo pipefail
           LOG="ops/supervisor/last_run.log"
           {
-            REGION="europe-west1"
-            SERVICE="diary-api-preview"
-            gcloud config set project "${GCP_PROJECT_ID}" >/dev/null
-            gcloud config set run/region "$REGION" >/dev/null
-            gcloud run deploy "$SERVICE" \
-              --source apps/api \
+            IMAGE="${REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${AR_REPO}/diary-api:converge-${GITHUB_RUN_NUMBER}"
+            echo "Building ${IMAGE} from apps/api …"
+            gcloud builds submit apps/api --tag "${IMAGE}"
+            echo "Build done: ${IMAGE}"
+          } | tee -a "$LOG"
+
+      - name: Deploy Cloud Run with built image
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOG="ops/supervisor/last_run.log"
+          {
+            IMAGE="${REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${AR_REPO}/diary-api:converge-${GITHUB_RUN_NUMBER}"
+            echo "Deploying ${SERVICE} in ${REGION} using ${IMAGE} …"
+            gcloud config set run/region "${REGION}" >/dev/null
+            gcloud run deploy "${SERVICE}" \
+              --image "${IMAGE}" \
               --allow-unauthenticated \
               --quiet \
               --update-env-vars PORT=8080 \
               --set-secrets DIARY_TOKEN=projects/${GCP_PROJECT_ID}/secrets/preview-DIARY_TOKEN:latest \
               --set-secrets DATABASE_URL=projects/${GCP_PROJECT_ID}/secrets/preview-DATABASE_URL:latest
-            URL="$(gcloud run services describe "$SERVICE" --format='value(status.url)')"
+            URL="$(gcloud run services describe "${SERVICE}" --format='value(status.url)')"
             echo "$URL" | tee cloud_run_url.txt
             echo "$URL" > ops/supervisor/cloud_run_url.txt
             printf '{"cloud_run_url":"%s","ts":"%s"}\n' "$URL" "$(date -u +%FT%TZ)" > ops/supervisor/last_run.json
             echo "Cloud Run URL: $URL"
           } | tee -a "$LOG"
 
-      - name: Always push log & outputs
+      - name: Push log & outputs to repo (always)
         if: always()
-        env:
-          GH_PAT: ${{ env.GH_PAT }}
         shell: bash
         run: |
           set -euo pipefail
-          GH_TOKEN="${GH_PAT:-$GITHUB_TOKEN}" ./push_log.sh
+          git add ops/supervisor/last_run.log ops/supervisor/last_run.json || true
+          [ -f ops/supervisor/cloud_run_url.txt ] && git add ops/supervisor/cloud_run_url.txt || true
+          git commit -m "ops(converge): save log/outputs" || true
+          git push origin HEAD:${GITHUB_REF_NAME} || true
 
-      - name: Comment summary to PR #9 (best-effort)
-        if: always()
-        env:
-          GH_PAT: ${{ env.GH_PAT }}
-        run: |
-          GH_TOKEN="${GH_PAT:-$GITHUB_TOKEN}"
-          if [ -f ops/supervisor/cloud_run_url.txt ]; then
-            URL="$(cat ops/supervisor/cloud_run_url.txt)"
-            gh api repos/${{ github.repository }}/issues/9/comments -f body="✅ Cloud Run URL: ${URL}\nЛоги: ops/supervisor/last_run.log" || true
-          else
-            gh api repos/${{ github.repository }}/issues/9/comments -f body="❌ Deploy failed. См. ops/supervisor/last_run.log" || true
-          fi
-          # kick
 
 
 
