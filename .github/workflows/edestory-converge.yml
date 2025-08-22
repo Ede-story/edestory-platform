@@ -127,6 +127,7 @@ jobs:
           ./upsert.sh ops/supervisor/last_run.log "ops(converge): upsert log via API" || true
           [ -f ops/supervisor/cloud_run_url.txt ] && ./upsert.sh ops/supervisor/cloud_run_url.txt "ops(converge): upsert url via API" || true
           ./upsert.sh ops/supervisor/last_run.json "ops(converge): upsert json via API" || true
+          # kick
 
           
 
