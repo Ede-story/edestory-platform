@@ -1,4 +1,4 @@
-name: EDEstory Converge (Preflight → Cloud Run → Save URL)
+name: EDEstory Converge (Preflight → Cloud Run → Save URL) — PAT
 
 on:
   push:
@@ -6,6 +6,7 @@ on:
     paths: [ ".github/workflows/edestory-converge.yml" ]
   workflow_dispatch: {}
 
+# GitHub permissions для GITHUB_TOKEN (нам не критично, используем GH_PAT)
 permissions:
   contents: write
   pull-requests: write
@@ -17,37 +18,31 @@ permissions:
 jobs:
   converge:
     runs-on: ubuntu-latest
+    env:
+      # PAT будем подавать через GH_TOKEN в тех шагах, где нужен доступ к GitHub API
+      GH_PAT: ${{ secrets.GH_PAT }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # --- PREFLIGHT: печать переменных приложения (для контроля наличия) ---
-      - name: Preflight – print App vars (masked)
+      # PREFLIGHT: убеждаемся, что PAT есть
+      - name: Preflight – check GH_PAT presence
         run: |
-          echo "GH_APP_ID=${GH_APP_ID:-MISSING}"
-          echo "OWNER=Ede-story"
-          echo "REPO=edestory-platform"
-        env:
-          GH_APP_ID: ${{ vars.GH_APP_ID }}
+          if [ -z "${GH_PAT}" ]; then
+            echo "::error::Missing GH_PAT secret. Create classic PAT with scopes: repo, workflow and save as GH_PAT."
+            exit 1
+          fi
+          echo "GH_PAT is set."
 
-      # --- Создаём токен GitHub App БЕЗ installation_id (через owner/repositories) ---
-      - name: Create GitHub App token (must succeed)
-        id: app
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ vars.GH_APP_ID }}
-          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
-          owner: Ede-story
-          repositories: edestory-platform
-
-      - name: Smoke – use token to comment PR #9
+      # Smoke: используем PAT, чтобы написать комментарий в PR #9 (доказывает, что записывать в GH можем)
+      - name: Smoke – comment PR #9 via PAT
         env:
-          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_TOKEN: ${{ env.GH_PAT }}
         run: |
           gh api repos/${{ github.repository }}/issues/9/comments \
-            -f body="✅ App token OK (preflight). Proceeding to deploy…" || exit 1
+            -f body="✅ PAT OK (preflight). Proceeding to deploy…" || exit 1
 
-      # --- Аутентификация в GCP (WIF) + gcloud ---
+      # GCP AUTH (WIF) + gcloud — это как раньше
       - name: Auth to Google Cloud (WIF)
         uses: google-github-actions/auth@v2
         with:
@@ -59,7 +54,7 @@ jobs:
         with:
           project_id: ${{ vars.GCP_PROJECT_ID }}
 
-      # --- Деплой Cloud Run из каталога apps/api (Cloud Build соберёт образ) ---
+      # DEPLOY Cloud Run из apps/api (Cloud Build соберёт образ)
       - name: Deploy Cloud Run (apps/api)
         env:
           PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
@@ -82,10 +77,10 @@ jobs:
           URL="$(gcloud run services describe "$SERVICE" --format='value(status.url)')"
           echo "$URL" > cloud_run_url.txt
 
-      # --- Записываем результаты в репозиторий (upsert через GitHub API) ---
-      - name: Write outputs into repo (commit via API)
+      # Сохраняем результат в репозиторий: создаём/обновляем файлы через GitHub API с GH_PAT
+      - name: Write outputs into repo (commit via API using PAT)
         env:
-          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_TOKEN: ${{ env.GH_PAT }}
         shell: bash
         run: |
           set -e
@@ -111,10 +106,9 @@ jobs:
           upsert "ops/supervisor/cloud_run_url.txt" "ops(supervisor): write cloud_run_url"
           upsert "ops/supervisor/last_run.json"     "ops(supervisor): write last_run json"
 
-      # --- Обновление Vercel env (без if:, проверка внутри bash) ---
+      # (Опционально) обновим Vercel env; проверим наличие токена/проекта внутри bash
       - name: Update Vercel env (optional)
         env:
-          GH_TOKEN: ${{ steps.app.outputs.token }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_PROJECT: ${{ vars.VERCEL_PROJECT }}
           VERCEL_TEAM_ID: ${{ vars.VERCEL_TEAM_ID }}
@@ -134,10 +128,10 @@ jobs:
             echo "Skip Vercel: VERCEL_TOKEN or VERCEL_PROJECT not set."
           fi
 
-      # --- Финальный комментарий в PR #9 (best-effort) ---
+      # Финальный комментарий с адресом Cloud Run (best-effort)
       - name: Comment Cloud Run URL to PR #9
         env:
-          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_TOKEN: ${{ env.GH_PAT }}
         run: |
           URL="$(cat cloud_run_url.txt)"
           gh api repos/${{ github.repository }}/issues/9/comments \
