@@ -25,6 +25,7 @@ jobs:
       REGION: europe-west1
       AR_REPO: diary-registry
       SERVICE: diary-api-preview
+      BUILD_GCS_BUCKET: ${{ vars.BUILD_GCS_BUCKET }}   # ← кастомный staging-бакет
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -45,10 +46,11 @@ jobs:
           else
             echo "::warning::GH_PAT not set; will try GITHUB_TOKEN" | tee -a "$LOG"
           fi
-          # helper to upsert file via API (вдруг git push откажет)
+          # helper for upsert via GitHub API (если git push не сработает)
           cat > upsert.sh <<'UP'
           #!/usr/bin/env bash
           set -euo pipefail
+          GH_TOKEN="${GH_PAT:-$GITHUB_TOKEN}"
           PATH_TO="$1"; MSG="$2"
           content=$(base64 "$PATH_TO" | tr -d '\n')
           sha=$(gh api repos/${GITHUB_REPOSITORY}/contents/$PATH_TO --jq .sha 2>/dev/null || echo "")
@@ -71,7 +73,7 @@ jobs:
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
 
-      - name: Build image with Cloud Build (log)
+      - name: Build image with Cloud Build (using custom GCS bucket)
         shell: bash
         run: |
           set -euo pipefail
@@ -79,12 +81,14 @@ jobs:
           {
             IMAGE="${REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${AR_REPO}/diary-api:converge-${GITHUB_RUN_NUMBER}"
             echo "Building ${IMAGE} from apps/api …"
-            gcloud builds submit apps/api --tag "${IMAGE}"
+            gcloud builds submit apps/api --tag "${IMAGE}" \
+              --gcs-source-staging-dir="gs://${BUILD_GCS_BUCKET}/source" \
+              --gcs-log-dir="gs://${BUILD_GCS_BUCKET}/logs"
             echo "Build done: ${IMAGE}"
             echo "${IMAGE}" > ops/supervisor/image.txt
           } 2>&1 | tee -a "$LOG"
 
-      - name: Deploy Cloud Run with built image (log)
+      - name: Deploy Cloud Run with built image
         shell: bash
         run: |
           set -euo pipefail
@@ -117,17 +121,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # попытка git push
           git add ops/supervisor/last_run.log ops/supervisor/last_run.json || true
           [ -f ops/supervisor/cloud_run_url.txt ] && git add ops/supervisor/cloud_run_url.txt || true
           git commit -m "ops(converge): save log/outputs" || true
           git push origin HEAD:${GITHUB_REF_NAME} || true
-          # если git push не прошёл (нет GH_PAT), положим через API (gh)
-          export GH_TOKEN="${GH_PAT:-$GITHUB_TOKEN}"
           ./upsert.sh ops/supervisor/last_run.log "ops(converge): upsert log via API" || true
           [ -f ops/supervisor/cloud_run_url.txt ] && ./upsert.sh ops/supervisor/cloud_run_url.txt "ops(converge): upsert url via API" || true
           ./upsert.sh ops/supervisor/last_run.json "ops(converge): upsert json via API" || true
-          # kick
 
           
 
