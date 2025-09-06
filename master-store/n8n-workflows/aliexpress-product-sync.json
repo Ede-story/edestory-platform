@@ -1,0 +1,205 @@
+{
+  "name": "AliExpress Product Sync",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 4
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Every 4 Hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api-sg.aliexpress.com/sync",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"method\": \"aliexpress.affiliate.hotproduct.query\",\n  \"app_key\": \"{{$env.ALIEXPRESS_APP_KEY}}\",\n  \"target_currency\": \"EUR\",\n  \"target_language\": \"ES\",\n  \"ship_to_country\": \"ES\",\n  \"page_size\": 50,\n  \"platform_product_type\": \"ALL\"\n}",
+        "options": {}
+      },
+      "id": "get-hot-products",
+      "name": "Get Hot Products",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "price-check",
+              "leftValue": "={{ $json.target_sale_price }}",
+              "rightValue": 10,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            },
+            {
+              "id": "commission-check",
+              "leftValue": "={{ $json.commission_rate }}",
+              "rightValue": 5,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            },
+            {
+              "id": "rating-check",
+              "leftValue": "={{ $json.evaluate_rate }}",
+              "rightValue": 4.5,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "filter-products",
+      "name": "Filter Quality Products",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate selling price with markup\nconst items = $input.all();\n\nreturn items.map(item => {\n  const product = item.json;\n  \n  // Apply 30-50% markup based on price\n  let markupPercent = 30;\n  if (product.target_sale_price < 20) {\n    markupPercent = 50;\n  } else if (product.target_sale_price < 50) {\n    markupPercent = 40;\n  }\n  \n  const sellingPrice = Math.round(product.target_sale_price * (1 + markupPercent / 100) * 100) / 100;\n  const profit = sellingPrice - product.target_sale_price;\n  const commission = Math.round(product.target_sale_price * (product.commission_rate / 100) * 100) / 100;\n  const netProfit = profit + commission;\n  \n  return {\n    json: {\n      ...product,\n      selling_price: sellingPrice,\n      markup_percent: markupPercent,\n      expected_profit: netProfit,\n      commission_amount: commission\n    }\n  };\n});"
+      },
+      "id": "calculate-prices",
+      "name": "Calculate Prices",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "mutation CreateProduct($input: ProductCreateInput!) {\n  productCreate(input: $input) {\n    product {\n      id\n      name\n      slug\n    }\n    errors {\n      field\n      message\n    }\n  }\n}",
+        "variables": "{\n  \"input\": {\n    \"name\": \"{{ $json.product_title }}\",\n    \"slug\": \"{{ $json.product_id }}\",\n    \"description\": {\n      \"blocks\": [\n        {\n          \"type\": \"paragraph\",\n          \"data\": {\n            \"text\": \"{{ $json.product_detail_url }}\"\n          }\n        }\n      ]\n    },\n    \"category\": \"{{ $json.first_level_category_id }}\",\n    \"productType\": \"dropshipping\",\n    \"weight\": 0.5,\n    \"metadata\": [\n      { \"key\": \"aliexpress_id\", \"value\": \"{{ $json.product_id }}\" },\n      { \"key\": \"affiliate_url\", \"value\": \"{{ $json.promotion_link }}\" },\n      { \"key\": \"commission_rate\", \"value\": \"{{ $json.commission_rate }}\" },\n      { \"key\": \"original_price\", \"value\": \"{{ $json.target_sale_price }}\" }\n    ]\n  }\n}",
+        "endpoint": "http://localhost:8000/graphql/"
+      },
+      "id": "create-saleor-product",
+      "name": "Create in Saleor",
+      "type": "n8n-nodes-base.graphql",
+      "typeVersion": 1,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "message",
+        "operation": "send",
+        "chatId": "{{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "✅ *Productos sincronizados*\n\n📦 Total importado: {{ $items().length }}\n💰 Precio promedio: €{{ $items().reduce((sum, item) => sum + item.json.selling_price, 0) / $items().length }}\n📈 Margen promedio: {{ $items().reduce((sum, item) => sum + item.json.markup_percent, 0) / $items().length }}%\n\n_Próxima sincronización en 4 horas_",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "notify-telegram",
+      "name": "Notify Success",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [1250, 300]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Every 4 Hours": {
+      "main": [
+        [
+          {
+            "node": "Get Hot Products",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Hot Products": {
+      "main": [
+        [
+          {
+            "node": "Filter Quality Products",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Quality Products": {
+      "main": [
+        [
+          {
+            "node": "Calculate Prices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Prices": {
+      "main": [
+        [
+          {
+            "node": "Create in Saleor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create in Saleor": {
+      "main": [
+        [
+          {
+            "node": "Notify Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "1",
+  "meta": {
+    "instanceId": "edestory-n8n"
+  },
+  "tags": [
+    {
+      "name": "AliExpress"
+    },
+    {
+      "name": "Product Import"
+    },
+    {
+      "name": "Automation"
+    }
+  ]
+}

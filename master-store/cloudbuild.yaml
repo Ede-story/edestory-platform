@@ -1,0 +1,90 @@
+# Cloud Build configuration для CI/CD
+steps:
+  # Step 1: Build Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/edestory-shop:$COMMIT_SHA'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/edestory-shop:latest'
+      - '--build-arg'
+      - 'NEXT_PUBLIC_SALEOR_API_URL=${_SALEOR_API_URL}'
+      - '--build-arg'
+      - 'NEXT_PUBLIC_STOREFRONT_URL=${_STOREFRONT_URL}'
+      - '--build-arg'
+      - 'NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${_STRIPE_PUBLISHABLE_KEY}'
+      - '--cache-from'
+      - 'gcr.io/$PROJECT_ID/edestory-shop:latest'
+      - '.'
+    timeout: '1200s'
+
+  # Step 2: Push to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/edestory-shop:$COMMIT_SHA'
+    
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/edestory-shop:latest'
+
+  # Step 3: Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'edestory-shop'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/edestory-shop:$COMMIT_SHA'
+      - '--region'
+      - 'europe-west1'
+      - '--platform'
+      - 'managed'
+      - '--memory'
+      - '1Gi'
+      - '--cpu'
+      - '1'
+      - '--timeout'
+      - '300'
+      - '--concurrency'
+      - '100'
+      - '--port'
+      - '8080'
+      - '--max-instances'
+      - '10'
+      - '--min-instances'
+      - '1'
+      - '--allow-unauthenticated'
+      - '--add-cloudsql-instances'
+      - '${_CLOUD_SQL_INSTANCE}'
+      - '--set-env-vars'
+      - 'DATABASE_URL=${_DATABASE_URL},STRIPE_SECRET_KEY=${_STRIPE_SECRET_KEY},ALIEXPRESS_APP_KEY=${_ALIEXPRESS_APP_KEY},ALIEXPRESS_APP_SECRET=${_ALIEXPRESS_APP_SECRET}'
+      - '--set-secrets'
+      - 'SALEOR_APP_TOKEN=saleor-app-token:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest'
+
+  # Step 4: Run database migrations
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud run jobs execute edestory-migrations \
+          --region=europe-west1 \
+          --wait
+
+# Substitutions (configurar en Cloud Build Trigger)
+substitutions:
+  _SALEOR_API_URL: 'https://api.shop.ede-story.com/graphql/'
+  _STOREFRONT_URL: 'https://shop.ede-story.com'
+  _STRIPE_PUBLISHABLE_KEY: 'pk_live_...'
+  _CLOUD_SQL_INSTANCE: 'edestory-platform:europe-west1:edestory-db'
+  _DATABASE_URL: 'postgresql://saleor:password@/saleor?host=/cloudsql/edestory-platform:europe-west1:edestory-db'
+
+options:
+  machineType: 'E2_HIGHCPU_8'
+  logging: 'CLOUD_LOGGING_ONLY'
+
+timeout: '2400s'

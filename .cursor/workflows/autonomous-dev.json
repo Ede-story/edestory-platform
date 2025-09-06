@@ -1,0 +1,68 @@
+{
+  "name": "Autonomous Development Workflow",
+  "description": "Fully automated development workflow for Edestory platform",
+  "trigger": "composer",
+  "autoRun": true,
+  "requireConfirmation": false,
+  "steps": [
+    {
+      "name": "Setup & Dependencies",
+      "auto": true,
+      "commands": [
+        "pnpm install",
+        "pnpm audit fix"
+      ],
+      "errorHandling": "continue"
+    },
+    {
+      "name": "Code Implementation", 
+      "auto": true,
+      "commands": [
+        "pnpm lint --fix",
+        "pnpm format"
+      ],
+      "errorHandling": "auto-fix"
+    },
+    {
+      "name": "Testing",
+      "auto": true,
+      "commands": [
+        "pnpm test",
+        "pnpm test:e2e",
+        "pnpm build"
+      ],
+      "errorHandling": "auto-fix"
+    },
+    {
+      "name": "Git Operations",
+      "auto": true,
+      "commands": [
+        "git add .",
+        "git commit -m 'feat: auto-generated changes'",
+        "git push origin main"
+      ],
+      "errorHandling": "retry"
+    },
+    {
+      "name": "Deployment",
+      "auto": true,
+      "commands": [
+        "vercel --prod",
+        "pnpm run verify:deployment"
+      ],
+      "errorHandling": "retry"
+    }
+  ],
+  "settings": {
+    "maxRetries": 3,
+    "timeout": 300,
+    "parallelExecution": true,
+    "notifyOnComplete": true,
+    "logLevel": "info"
+  },
+  "permissions": {
+    "fileSystem": "full",
+    "network": "full",
+    "process": "full"
+  }
+}

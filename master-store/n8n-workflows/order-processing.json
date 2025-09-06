@@ -1,0 +1,241 @@
+{
+  "name": "Order Processing Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "order-webhook",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": false
+        }
+      },
+      "id": "webhook-trigger",
+      "name": "Order Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [250, 300],
+      "webhookId": "saleor-order-created"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "payment-check",
+              "leftValue": "={{ $json.order.paymentStatus }}",
+              "rightValue": "FULLY_CHARGED",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "check-payment",
+      "name": "Payment Verified?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract product info and create AliExpress order data\nconst order = $input.first().json;\nconst items = [];\n\nfor (const line of order.lines) {\n  const aliexpressId = line.variant.metadata.find(m => m.key === 'aliexpress_id')?.value;\n  const affiliateUrl = line.variant.metadata.find(m => m.key === 'affiliate_url')?.value;\n  \n  if (aliexpressId) {\n    items.push({\n      product_id: aliexpressId,\n      quantity: line.quantity,\n      sku: line.variant.sku,\n      affiliate_url: affiliateUrl,\n      customer_price: line.totalPrice.gross.amount,\n      original_price: line.variant.metadata.find(m => m.key === 'original_price')?.value\n    });\n  }\n}\n\nreturn [{\n  json: {\n    order_id: order.id,\n    order_number: order.number,\n    customer: {\n      email: order.userEmail,\n      name: order.shippingAddress.firstName + ' ' + order.shippingAddress.lastName,\n      phone: order.shippingAddress.phone,\n      address: {\n        street: order.shippingAddress.streetAddress1,\n        city: order.shippingAddress.city,\n        postalCode: order.shippingAddress.postalCode,\n        country: order.shippingAddress.country.code\n      }\n    },\n    items: items,\n    total_amount: order.total.gross.amount,\n    currency: order.total.currency\n  }\n}];"
+      },
+      "id": "prepare-order-data",
+      "name": "Prepare Order Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "{{ $env.ALIEXPRESS_ORDER_API }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"order_items\": {{ $json.items }},\n  \"shipping_address\": {{ $json.customer.address }},\n  \"tracking_id\": \"{{ $env.ALIEXPRESS_TRACKING_ID }}\"\n}",
+        "options": {}
+      },
+      "id": "create-aliexpress-order",
+      "name": "Create AliExpress Order",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [850, 200]
+    },
+    {
+      "parameters": {
+        "fromEmail": "orders@shop.ede-story.com",
+        "toEmail": "={{ $json.customer.email }}",
+        "subject": "✅ Tu pedido #{{ $json.order_number }} está confirmado",
+        "html": "<html>\n<body style=\"font-family: Arial, sans-serif; color: #333;\">\n  <div style=\"max-width: 600px; margin: 0 auto; padding: 20px;\">\n    <div style=\"background: #E6A853; padding: 20px; text-align: center;\">\n      <h1 style=\"color: white; margin: 0;\">¡Gracias por tu compra!</h1>\n    </div>\n    \n    <div style=\"padding: 20px; background: #f9f9f9;\">\n      <h2>Hola {{ $json.customer.name }},</h2>\n      <p>Hemos recibido tu pedido <strong>#{{ $json.order_number }}</strong> y ya estamos procesándolo.</p>\n      \n      <div style=\"background: white; padding: 15px; margin: 20px 0; border-radius: 5px;\">\n        <h3>Detalles del pedido:</h3>\n        <p><strong>Total:</strong> €{{ $json.total_amount }}</p>\n        <p><strong>Dirección de envío:</strong><br>\n        {{ $json.customer.address.street }}<br>\n        {{ $json.customer.address.city }}, {{ $json.customer.address.postalCode }}<br>\n        {{ $json.customer.address.country }}</p>\n      </div>\n      \n      <div style=\"background: #e8f4f8; padding: 15px; margin: 20px 0; border-radius: 5px;\">\n        <h3>📦 Tiempo de entrega estimado:</h3>\n        <p>Tu pedido llegará en <strong>3-5 días laborables</strong> desde nuestro almacén en España.</p>\n      </div>\n      \n      <p>Recibirás otro email con el número de seguimiento cuando tu pedido sea enviado.</p>\n      \n      <div style=\"text-align: center; margin-top: 30px;\">\n        <a href=\"https://shop.ede-story.com/orders/{{ $json.order_id }}\" \n           style=\"background: #E6A853; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block;\">\n           Ver estado del pedido\n        </a>\n      </div>\n    </div>\n    \n    <div style=\"padding: 20px; text-align: center; color: #666; font-size: 12px;\">\n      <p>Si tienes alguna pregunta, contáctanos en support@ede-story.com</p>\n      <p>&copy; 2025 Ede-story Shop. Todos los derechos reservados.</p>\n    </div>\n  </div>\n</body>\n</html>",
+        "options": {
+          "allowUnauthorizedCerts": false,
+          "replyTo": "support@ede-story.com"
+        }
+      },
+      "id": "send-confirmation-email",
+      "name": "Send Confirmation Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1050, 200]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "mutation UpdateOrder($id: ID!, $input: OrderUpdateInput!) {\n  orderUpdate(id: $id, input: $input) {\n    order {\n      id\n      status\n      metadata {\n        key\n        value\n      }\n    }\n  }\n}",
+        "variables": "{\n  \"id\": \"{{ $json.order_id }}\",\n  \"input\": {\n    \"metadata\": [\n      { \"key\": \"aliexpress_order_id\", \"value\": \"{{ $json.aliexpress_order_id }}\" },\n      { \"key\": \"processing_status\", \"value\": \"confirmed\" },\n      { \"key\": \"confirmation_sent\", \"value\": \"{{ $now.toISO() }}\" }\n    ]\n  }\n}",
+        "endpoint": "http://localhost:8000/graphql/"
+      },
+      "id": "update-saleor-order",
+      "name": "Update Order Status",
+      "type": "n8n-nodes-base.graphql",
+      "typeVersion": 1,
+      "position": [1250, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate profit sharing\nconst order = $input.first().json;\n\n// Calculate totals\nlet totalRevenue = order.total_amount;\nlet totalCost = 0;\nlet totalCommission = 0;\n\nfor (const item of order.items) {\n  totalCost += parseFloat(item.original_price) * item.quantity;\n  // Assume 5% average commission\n  totalCommission += parseFloat(item.original_price) * 0.05 * item.quantity;\n}\n\nconst grossProfit = totalRevenue - totalCost + totalCommission;\nconst platformShare = grossProfit * 0.20; // 20% for platform\nconst clientShare = grossProfit * 0.80; // 80% for client\n\nreturn [{\n  json: {\n    order_id: order.order_id,\n    order_number: order.order_number,\n    revenue: totalRevenue,\n    cost: totalCost,\n    commission: totalCommission,\n    gross_profit: grossProfit,\n    platform_share: platformShare,\n    client_share: clientShare,\n    profit_margin: (grossProfit / totalRevenue * 100).toFixed(2) + '%'\n  }\n}];"
+      },
+      "id": "calculate-profit",
+      "name": "Calculate Profit Sharing",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1050, 400]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "sheetId": "{{ $env.GOOGLE_SHEET_ID }}",
+        "range": "Orders!A:H",
+        "options": {
+          "valueInputMode": "USER_ENTERED"
+        },
+        "values": "=[\n  [\n    \"{{ $now.toISO() }}\",\n    \"{{ $json.order_number }}\",\n    \"{{ $json.revenue }}\",\n    \"{{ $json.cost }}\",\n    \"{{ $json.commission }}\",\n    \"{{ $json.gross_profit }}\",\n    \"{{ $json.platform_share }}\",\n    \"{{ $json.client_share }}\"\n  ]\n]"
+      },
+      "id": "log-to-sheets",
+      "name": "Log to Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [1250, 400]
+    },
+    {
+      "parameters": {
+        "content": "## Order Processing Failed\n\nPayment not verified for order.\nSend to manual review queue.",
+        "height": 80,
+        "width": 250
+      },
+      "id": "payment-failed-note",
+      "name": "Payment Failed",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [650, 450]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Order Webhook": {
+      "main": [
+        [
+          {
+            "node": "Payment Verified?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Payment Verified?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Order Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Prepare Order Data": {
+      "main": [
+        [
+          {
+            "node": "Create AliExpress Order",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Calculate Profit Sharing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create AliExpress Order": {
+      "main": [
+        [
+          {
+            "node": "Send Confirmation Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Confirmation Email": {
+      "main": [
+        [
+          {
+            "node": "Update Order Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Profit Sharing": {
+      "main": [
+        [
+          {
+            "node": "Log to Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "error-handler"
+  },
+  "versionId": "1",
+  "meta": {
+    "instanceId": "edestory-n8n"
+  },
+  "tags": [
+    {
+      "name": "Orders"
+    },
+    {
+      "name": "E-commerce"
+    },
+    {
+      "name": "Critical"
+    }
+  ]
+}

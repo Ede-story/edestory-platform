@@ -1,0 +1,149 @@
+{
+  "name": "AliExpress Product Sync",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 4
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Every 4 Hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.aliexpress.com/products",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "API-Key",
+              "value": "={{$env[\"ALIEXPRESS_API_KEY\"]}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-products",
+      "name": "Fetch AliExpress Products",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Transform AliExpress data to Saleor format\\nconst products = $input.all();\\nreturn products.map(item => {\\n  const product = item.json;\\n  return {\\n    json: {\\n      name: product.title,\\n      description: product.description,\\n      price: product.price * 1.3, // 30% markup\\n      sku: product.sku,\\n      stock: product.quantity,\\n      images: product.images,\\n      category: product.category,\\n      attributes: {\\n        brand: product.brand,\\n        color: product.color,\\n        size: product.size\\n      },\\n      seoTitle: product.title,\\n      seoDescription: product.description.substring(0, 160)\\n    }\\n  };\\n});"
+      },
+      "id": "transform-data",
+      "name": "Transform to Saleor Format",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{$env[\"SALEOR_API_URL\"]}}/graphql",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{$env[\"SALEOR_API_TOKEN\"]}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "mutation CreateProduct($input: ProductCreateInput!) { productCreate(input: $input) { product { id name } errors { message } } }"
+            },
+            {
+              "name": "variables",
+              "value": "={{JSON.stringify({input: $json})}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "update-saleor",
+      "name": "Update Saleor",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "content": "## AliExpress → Saleor Sync\\n\\nАвтоматическая синхронизация товаров:\\n- Запуск каждые 4 часа\\n- Получение товаров из AliExpress API\\n- Трансформация данных\\n- Наценка 30%\\n- Обновление каталога Saleor\\n- Логирование результатов",
+        "height": 250,
+        "width": 300
+      },
+      "id": "note-sync",
+      "name": "Workflow Description",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [100, 100]
+    }
+  ],
+  "connections": {
+    "Every 4 Hours": {
+      "main": [
+        [
+          {
+            "node": "Fetch AliExpress Products",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch AliExpress Products": {
+      "main": [
+        [
+          {
+            "node": "Transform to Saleor Format",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform to Saleor Format": {
+      "main": [
+        [
+          {
+            "node": "Update Saleor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "01",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "edestory-aliexpress-sync"
+  },
+  "tags": ["ecommerce", "sync", "aliexpress", "saleor"]
+}

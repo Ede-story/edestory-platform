@@ -1,0 +1,266 @@
+{
+  "name": "Instagram Competitor Analysis - Alternative Method",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "instagram-analysis",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Alternative scraping using RapidAPI Instagram services\n// This method doesn't require Instagram login\n\nconst url = $input.first().json.instagram_url;\nconst username = url.match(/instagram\\.com\\/([^\\/\\?]+)/)?.[1];\n\nif (!username) {\n  throw new Error('Invalid Instagram URL');\n}\n\nreturn [{\n  json: {\n    username: username,\n    url: url,\n    timestamp: new Date().toISOString(),\n    services_to_use: [\n      'rapidapi_instagram',\n      'brightdata_instagram',\n      'proxycrawl_instagram'\n    ]\n  }\n}];"
+      },
+      "id": "prepare",
+      "name": "Prepare Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://instagram-scraper-api2.p.rapidapi.com/v1/info",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "GET",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-RapidAPI-Key",
+              "value": "={{$env[\"RAPIDAPI_KEY\"]}}"
+            },
+            {
+              "name": "X-RapidAPI-Host",
+              "value": "instagram-scraper-api2.p.rapidapi.com"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "username_or_id_or_url",
+              "value": "={{$json.username}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-profile-rapidapi",
+      "name": "Fetch Profile (RapidAPI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract followers and find similar accounts\nconst profile = $input.first().json.data;\nconst username = profile.username;\n\n// Get followers sample for analysis\nreturn [{\n  json: {\n    profile: {\n      username: profile.username,\n      full_name: profile.full_name,\n      biography: profile.biography,\n      follower_count: profile.follower_count,\n      following_count: profile.following_count,\n      media_count: profile.media_count,\n      is_verified: profile.is_verified,\n      category: profile.category_name,\n      external_url: profile.external_url\n    },\n    next_step: 'fetch_followers'\n  }\n}];"
+      },
+      "id": "process-profile",
+      "name": "Process Profile Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://instagram-scraper-api2.p.rapidapi.com/v1/followers",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "GET",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-RapidAPI-Key",
+              "value": "={{$env[\"RAPIDAPI_KEY\"]}}"
+            },
+            {
+              "name": "X-RapidAPI-Host",
+              "value": "instagram-scraper-api2.p.rapidapi.com"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "username_or_id_or_url",
+              "value": "={{$json.profile.username}}"
+            },
+            {
+              "name": "amount",
+              "value": "100"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-followers",
+      "name": "Fetch Followers Sample",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Analyze followers to find competitor patterns\nconst followers = $input.first().json.data.items || [];\nconst mainProfile = $node[\"Process Profile Data\"].json.profile;\n\n// Analyze follower accounts to find similar businesses\nconst potentialCompetitors = [];\nconst businessKeywords = ['shop', 'store', 'brand', 'boutique', 'company', 'official', 'studio'];\n\nfollowers.forEach(follower => {\n  // Check if follower might be a business account\n  const bio = (follower.biography || '').toLowerCase();\n  const username = (follower.username || '').toLowerCase();\n  const isBusinessLikely = \n    follower.is_verified || \n    follower.follower_count > 5000 ||\n    businessKeywords.some(keyword => bio.includes(keyword) || username.includes(keyword));\n  \n  if (isBusinessLikely) {\n    potentialCompetitors.push({\n      username: follower.username,\n      full_name: follower.full_name,\n      follower_count: follower.follower_count,\n      is_verified: follower.is_verified,\n      profile_pic_url: follower.profile_pic_url,\n      score: calculateCompetitorScore(follower, mainProfile)\n    });\n  }\n});\n\n// Sort by score and take top candidates\nconst topCompetitors = potentialCompetitors\n  .sort((a, b) => b.score - a.score)\n  .slice(0, 30);\n\nreturn [{\n  json: {\n    main_profile: mainProfile,\n    competitor_candidates: topCompetitors,\n    total_analyzed: followers.length\n  }\n}];\n\nfunction calculateCompetitorScore(account, mainProfile) {\n  let score = 0;\n  \n  // Similar follower count (within 50-200% range)\n  const followerRatio = account.follower_count / mainProfile.follower_count;\n  if (followerRatio >= 0.5 && followerRatio <= 2) {\n    score += 30;\n  }\n  \n  // Verified accounts get bonus\n  if (account.is_verified) score += 20;\n  \n  // Active accounts (has posts)\n  if (account.media_count > 10) score += 15;\n  \n  // Engagement indicators\n  if (account.follower_count > 10000) score += 10;\n  if (account.follower_count > 100000) score += 15;\n  \n  return score;\n}"
+      },
+      "id": "analyze-followers",
+      "name": "Analyze Followers",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Batch process competitor candidates to get detailed info\nconst candidates = $input.first().json.competitor_candidates;\nconst batchSize = 5; // Process 5 at a time to avoid rate limits\nconst batches = [];\n\nfor (let i = 0; i < candidates.length; i += batchSize) {\n  batches.push(candidates.slice(i, i + batchSize));\n}\n\nreturn batches.map(batch => ({\n  json: {\n    batch: batch,\n    batch_number: batches.indexOf(batch) + 1,\n    total_batches: batches.length\n  }\n}));"
+      },
+      "id": "batch-competitors",
+      "name": "Batch Competitors",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1450, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Enhanced geo-location detection\nconst competitors = $input.all();\nconst geoPatterns = {\n  'USA': {\n    keywords: ['USA', 'United States', 'America', 'US', '🇺🇸'],\n    cities: ['New York', 'Los Angeles', 'Chicago', 'Houston', 'Phoenix', 'Philadelphia', 'San Antonio', 'San Diego', 'Dallas', 'San Jose', 'NYC', 'LA', 'SF'],\n    domains: ['.com', '.us'],\n    timezone_indicators: ['EST', 'CST', 'MST', 'PST', 'EDT', 'CDT', 'MDT', 'PDT']\n  },\n  'UK': {\n    keywords: ['UK', 'United Kingdom', 'Britain', 'England', 'Scotland', 'Wales', '🇬🇧'],\n    cities: ['London', 'Manchester', 'Birmingham', 'Leeds', 'Glasgow', 'Liverpool', 'Bristol', 'Sheffield', 'Edinburgh', 'Leicester'],\n    domains: ['.co.uk', '.uk'],\n    timezone_indicators: ['GMT', 'BST']\n  },\n  'EU': {\n    keywords: ['Europe', 'EU', 'European', '🇪🇺'],\n    cities: ['Paris', 'Berlin', 'Madrid', 'Rome', 'Barcelona', 'Munich', 'Milan', 'Warsaw', 'Vienna', 'Hamburg', 'Budapest', 'Amsterdam', 'Prague', 'Brussels', 'Stockholm'],\n    domains: ['.eu', '.de', '.fr', '.it', '.es', '.nl', '.pl', '.be', '.se'],\n    timezone_indicators: ['CET', 'CEST', 'EET', 'EEST']\n  },\n  'RU': {\n    keywords: ['Russia', 'Россия', 'РФ', 'Russian', '🇷🇺'],\n    cities: ['Moscow', 'Москва', 'Saint Petersburg', 'Санкт-Петербург', 'СПб', 'Novosibirsk', 'Новосибирск', 'Yekaterinburg', 'Екатеринбург'],\n    domains: ['.ru', '.рф'],\n    timezone_indicators: ['MSK', 'МСК']\n  }\n};\n\nconst geoTaggedCompetitors = competitors.map(item => {\n  const data = item.json;\n  let detectedRegion = 'Unknown';\n  let confidence = 0;\n  \n  // Combine all text fields for analysis\n  const textToAnalyze = `\n    ${data.username || ''} \n    ${data.full_name || ''} \n    ${data.biography || ''} \n    ${data.external_url || ''} \n    ${data.category_name || ''}\n  `.toLowerCase();\n  \n  // Check each region\n  const regionScores = {};\n  \n  for (const [region, patterns] of Object.entries(geoPatterns)) {\n    let score = 0;\n    \n    // Check keywords\n    patterns.keywords.forEach(keyword => {\n      if (textToAnalyze.includes(keyword.toLowerCase())) {\n        score += 10;\n      }\n    });\n    \n    // Check cities\n    patterns.cities.forEach(city => {\n      if (textToAnalyze.includes(city.toLowerCase())) {\n        score += 15;\n      }\n    });\n    \n    // Check domains\n    patterns.domains.forEach(domain => {\n      if (textToAnalyze.includes(domain)) {\n        score += 8;\n      }\n    });\n    \n    regionScores[region] = score;\n  }\n  \n  // Find highest scoring region\n  const topRegion = Object.entries(regionScores)\n    .sort((a, b) => b[1] - a[1])[0];\n  \n  if (topRegion[1] > 0) {\n    detectedRegion = topRegion[0];\n    confidence = Math.min(topRegion[1], 100);\n  }\n  \n  return {\n    json: {\n      ...data,\n      detected_region: detectedRegion,\n      region_confidence: confidence,\n      analysis_timestamp: new Date().toISOString()\n    }\n  };\n});\n\nreturn geoTaggedCompetitors;"
+      },
+      "id": "geo-detection",
+      "name": "Advanced Geo Detection",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1650, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Create final report with top 100 competitors\nconst allCompetitors = $input.all().map(item => item.json);\n\n// Group by region\nconst byRegion = {\n  'USA': [],\n  'UK': [],\n  'EU': [],\n  'RU': [],\n  'Unknown': []\n};\n\nallCompetitors.forEach(competitor => {\n  const region = competitor.detected_region || 'Unknown';\n  if (byRegion[region]) {\n    byRegion[region].push(competitor);\n  }\n});\n\n// Sort each region by follower count and take top 25\nObject.keys(byRegion).forEach(region => {\n  byRegion[region] = byRegion[region]\n    .sort((a, b) => (b.follower_count || 0) - (a.follower_count || 0))\n    .slice(0, 25);\n});\n\n// Create global top 100\nconst top100Global = allCompetitors\n  .sort((a, b) => (b.follower_count || 0) - (a.follower_count || 0))\n  .slice(0, 100);\n\n// Generate insights\nconst insights = {\n  total_analyzed: allCompetitors.length,\n  by_region_count: Object.entries(byRegion).map(([region, accounts]) => ({\n    region,\n    count: accounts.length,\n    avg_followers: Math.round(\n      accounts.reduce((sum, a) => sum + (a.follower_count || 0), 0) / (accounts.length || 1)\n    )\n  })),\n  verified_accounts: allCompetitors.filter(a => a.is_verified).length,\n  avg_follower_count: Math.round(\n    allCompetitors.reduce((sum, a) => sum + (a.follower_count || 0), 0) / allCompetitors.length\n  )\n};\n\nconst report = {\n  report_id: `trend_${Date.now()}`,\n  generated_at: new Date().toISOString(),\n  \n  summary: {\n    total_competitors_found: allCompetitors.length,\n    insights: insights\n  },\n  \n  top_100_global: top100Global.map((c, index) => ({\n    rank: index + 1,\n    username: c.username,\n    full_name: c.full_name,\n    followers: c.follower_count,\n    region: c.detected_region,\n    is_verified: c.is_verified,\n    profile_url: `https://instagram.com/${c.username}`\n  })),\n  \n  by_region: Object.entries(byRegion).map(([region, accounts]) => ({\n    region,\n    competitors: accounts.map((c, index) => ({\n      rank: index + 1,\n      username: c.username,\n      followers: c.follower_count,\n      is_verified: c.is_verified\n    }))\n  })),\n  \n  recommendations: [\n    'Focus on accounts with 10K-100K followers for partnership opportunities',\n    'Monitor verified accounts for industry trends',\n    `Primary market opportunity in ${insights.by_region_count[0].region} with ${insights.by_region_count[0].count} active competitors`,\n    'Consider content strategies used by top 10 global competitors'\n  ]\n};\n\nreturn [{ json: report }];"
+      },
+      "id": "final-report",
+      "name": "Generate Final Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1850, 300]
+    },
+    {
+      "parameters": {
+        "content": "## Alternative Instagram Scraping Method\n\n### Преимущества:\n- Не требует Instagram логина\n- Использует несколько API сервисов\n- Более стабильная работа\n- Меньше риск блокировки\n\n### Используемые сервисы:\n1. **RapidAPI Instagram Scraper**\n2. **Bright Data** (опционально)\n3. **ProxyCrawl** (опционально)\n\n### Необходимые API ключи:\n- `RAPIDAPI_KEY` - получить на rapidapi.com\n- `EMAIL_FROM` - для отправки отчетов\n\n### Ограничения:\n- RapidAPI: 500 запросов/месяц (бесплатно)\n- Платные планы для больших объемов",
+        "height": 350,
+        "width": 300
+      },
+      "id": "note",
+      "name": "Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [50, 500]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Prepare Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Request": {
+      "main": [
+        [
+          {
+            "node": "Fetch Profile (RapidAPI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Profile (RapidAPI)": {
+      "main": [
+        [
+          {
+            "node": "Process Profile Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Profile Data": {
+      "main": [
+        [
+          {
+            "node": "Fetch Followers Sample",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Followers Sample": {
+      "main": [
+        [
+          {
+            "node": "Analyze Followers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Followers": {
+      "main": [
+        [
+          {
+            "node": "Batch Competitors",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Batch Competitors": {
+      "main": [
+        [
+          {
+            "node": "Advanced Geo Detection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Advanced Geo Detection": {
+      "main": [
+        [
+          {
+            "node": "Generate Final Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true
+  },
+  "versionId": "01",
+  "meta": {
+    "instanceId": "edestory-instagram-alternative"
+  },
+  "tags": ["instagram", "trend-watching", "competitor-analysis", "rapidapi"]
+}

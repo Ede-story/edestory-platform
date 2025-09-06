@@ -1,0 +1,141 @@
+{
+  "name": "AI Content Generation",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 10
+            }
+          ]
+        }
+      },
+      "id": "daily-trigger",
+      "name": "Daily at 10 AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "resource": "assistant",
+        "operation": "message",
+        "modelId": "gpt-4",
+        "text": "Создай SEO-оптимизированную статью для блога интернет-магазина на тему: {{$json[\"topic\"]}}. Включи: заголовок, мета-описание, 3-5 подзаголовков, основной текст (500-700 слов), ключевые слова.",
+        "simplifyOutput": true
+      },
+      "id": "generate-content",
+      "name": "Generate Blog Post",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format content for publishing\\nconst content = $input.first().json;\\n\\nreturn [{\\n  json: {\\n    title: content.title,\\n    slug: content.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),\\n    metaDescription: content.metaDescription,\\n    content: content.content,\\n    excerpt: content.excerpt,\\n    keywords: content.keywords,\\n    author: 'AI Assistant',\\n    category: 'blog',\\n    status: 'draft',\\n    publishDate: new Date().toISOString(),\\n    featuredImage: null,\\n    tags: content.keywords.split(',').map(k => k.trim())\\n  }\\n}];"
+      },
+      "id": "format-content",
+      "name": "Format for CMS",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "collection": "posts",
+        "specifyBody": "json",
+        "jsonBody": "={{JSON.stringify($json)}}",
+        "options": {}
+      },
+      "id": "save-to-cms",
+      "name": "Save to CMS",
+      "type": "n8n-nodes-base.directus",
+      "typeVersion": 1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "channel": "#content",
+        "text": "📝 Новая статья создана: {{$json[\"title\"]}}\\nСтатус: Черновик\\nПосмотреть: {{$env[\"CMS_URL\"]}}/admin/posts/{{$json[\"id\"]}}",
+        "options": {}
+      },
+      "id": "notify-slack",
+      "name": "Notify Team",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.1,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "content": "## AI Content Generation\\n\\nЕжедневная генерация контента:\\n1. Запуск в 10:00\\n2. Генерация через Claude/GPT\\n3. SEO-оптимизация\\n4. Сохранение в CMS\\n5. Уведомление команды\\n\\nТемы берутся из очереди или генерируются на основе трендов",
+        "height": 280,
+        "width": 350
+      },
+      "id": "workflow-note",
+      "name": "Description",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [100, 50]
+    }
+  ],
+  "connections": {
+    "Daily at 10 AM": {
+      "main": [
+        [
+          {
+            "node": "Generate Blog Post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Blog Post": {
+      "main": [
+        [
+          {
+            "node": "Format for CMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format for CMS": {
+      "main": [
+        [
+          {
+            "node": "Save to CMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to CMS": {
+      "main": [
+        [
+          {
+            "node": "Notify Team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true
+  },
+  "versionId": "01",
+  "meta": {
+    "instanceId": "edestory-content-gen"
+  },
+  "tags": ["marketing", "content", "ai", "automation"]
+}

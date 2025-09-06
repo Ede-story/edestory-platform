@@ -1,0 +1,121 @@
+{
+  "name": "Edestory E-commerce MCP Tools",
+  "version": "1.0.0",
+  "description": "MCP tools configuration for e-commerce development",
+  "tools": {
+    "saleor": {
+      "description": "Saleor GraphQL API integration",
+      "capabilities": [
+        "product_management",
+        "inventory_tracking",
+        "order_processing",
+        "customer_management",
+        "payment_processing",
+        "shipping_management"
+      ],
+      "endpoints": {
+        "products": "/graphql/products",
+        "orders": "/graphql/orders",
+        "customers": "/graphql/customers",
+        "checkout": "/graphql/checkout"
+      }
+    },
+    "stripe": {
+      "description": "Payment processing with Stripe",
+      "capabilities": [
+        "payment_intents",
+        "subscriptions",
+        "refunds",
+        "webhooks",
+        "customer_portal"
+      ]
+    },
+    "aliexpress": {
+      "description": "Dropshipping integration with AliExpress",
+      "capabilities": [
+        "product_search",
+        "product_import",
+        "price_sync",
+        "inventory_sync",
+        "order_fulfillment",
+        "tracking_updates"
+      ]
+    },
+    "n8n": {
+      "description": "Workflow automation",
+      "workflows": [
+        {
+          "name": "product_sync",
+          "trigger": "schedule",
+          "frequency": "4h",
+          "description": "Sync products from AliExpress to Saleor"
+        },
+        {
+          "name": "content_generation",
+          "trigger": "webhook",
+          "description": "Generate product descriptions and SEO content"
+        },
+        {
+          "name": "order_processing",
+          "trigger": "saleor_webhook",
+          "description": "Process new orders and create fulfillments"
+        },
+        {
+          "name": "profit_calculation",
+          "trigger": "schedule",
+          "frequency": "weekly",
+          "description": "Calculate profit sharing (20/80 split)"
+        }
+      ]
+    },
+    "analytics": {
+      "description": "Business analytics and reporting",
+      "metrics": [
+        "conversion_rate",
+        "average_order_value",
+        "customer_lifetime_value",
+        "product_performance",
+        "traffic_sources",
+        "roi_calculation"
+      ]
+    }
+  },
+  "integrations": {
+    "social_media": {
+      "platforms": ["instagram", "facebook", "tiktok"],
+      "features": ["auto_posting", "product_tagging", "shop_integration"]
+    },
+    "email_marketing": {
+      "provider": "sendgrid",
+      "features": ["abandoned_cart", "order_confirmation", "newsletter"]
+    },
+    "seo": {
+      "tools": ["google_search_console", "google_analytics"],
+      "features": ["sitemap_generation", "meta_optimization", "schema_markup"]
+    }
+  },
+  "automation_rules": {
+    "inventory": {
+      "low_stock_threshold": 10,
+      "auto_reorder": true,
+      "supplier_notification": true
+    },
+    "pricing": {
+      "markup_percentage": 30,
+      "dynamic_pricing": true,
+      "competitor_monitoring": false
+    },
+    "content": {
+      "auto_translate": true,
+      "languages": ["es", "en", "ru"],
+      "ai_descriptions": true
+    }
+  },
+  "profit_sharing": {
+    "model": "revenue_share",
+    "platform_fee": 20,
+    "client_share": 80,
+    "payment_schedule": "monthly",
+    "minimum_payout": 100
+  }
+}

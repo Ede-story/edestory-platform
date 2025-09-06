@@ -115,3 +115,9 @@ Desktop.ini
 # Misc
 *.orig
 *.rej
+
+# MCP files
+.env.mcp
+mcp-servers/node_modules/
+mcp-servers/package-lock.json
+

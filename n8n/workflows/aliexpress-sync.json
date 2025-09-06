@@ -1,0 +1,155 @@
+{
+  "name": "AliExpress Product Sync",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 4
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.aliexpress.com/products",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "fetch-products",
+      "name": "Fetch AliExpress Products",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Transform AliExpress product to Saleor format\nconst product = $input.item.json;\n\nreturn {\n  name: product.title,\n  description: product.description,\n  price: product.price,\n  sku: product.product_id,\n  images: product.images,\n  category: product.category,\n  stock: product.available_quantity,\n  attributes: {\n    brand: product.brand,\n    weight: product.weight,\n    dimensions: product.dimensions\n  }\n};"
+      },
+      "id": "transform-data",
+      "name": "Transform Product Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SALEOR_API_URL }}/graphql",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"query\": \"mutation CreateProduct($input: ProductCreateInput!) { productCreate(input: $input) { product { id name } errors { field message } } }\",\n  \"variables\": {\n    \"input\": {\n      \"name\": \"{{ $json.name }}\",\n      \"description\": \"{{ $json.description }}\",\n      \"category\": \"{{ $json.category }}\",\n      \"attributes\": {{ JSON.stringify($json.attributes) }}\n    }\n  }\n}"
+      },
+      "id": "update-saleor",
+      "name": "Update Saleor",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "resource": "database",
+        "operation": "insert",
+        "table": "sync_log",
+        "columns": "product_id,status,synced_at,details",
+        "additionalFields": {}
+      },
+      "id": "log-sync",
+      "name": "Log Sync Status",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "message": "=🔄 AliExpress Sync Complete\\n\\nProducts synced: {{ $items().length }}\\nTime: {{ $now.toFormat('yyyy-MM-dd HH:mm:ss') }}\\nStatus: ✅ Success",
+        "additionalFields": {
+          "priority": 2,
+          "title": "AliExpress Sync Report"
+        }
+      },
+      "id": "send-notification",
+      "name": "Send Notification",
+      "type": "n8n-nodes-base.pushover",
+      "typeVersion": 1,
+      "position": [1250, 300]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Fetch AliExpress Products",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch AliExpress Products": {
+      "main": [
+        [
+          {
+            "node": "Transform Product Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform Product Data": {
+      "main": [
+        [
+          {
+            "node": "Update Saleor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Saleor": {
+      "main": [
+        [
+          {
+            "node": "Log Sync Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Sync Status": {
+      "main": [
+        [
+          {
+            "node": "Send Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "error-handler"
+  }
+}

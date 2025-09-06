@@ -1,0 +1,128 @@
+{
+  "name": "Edestory Content Factory",
+  "nodes": [
+    {
+      "id": "1",
+      "name": "Daily Trigger",
+      "type": "n8n-nodes-base.cron",
+      "position": [250, 300],
+      "parameters": {
+        "cronExpression": "0 10 * * *",
+        "timezone": "Europe/Madrid"
+      }
+    },
+    {
+      "id": "2", 
+      "name": "Get Products",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [450, 300],
+      "parameters": {
+        "url": "http://localhost:8000/graphql/",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "query": "{ products(first: 5, channel: \"default-channel\") { edges { node { id name description } } } }"
+        }
+      }
+    },
+    {
+      "id": "3",
+      "name": "Generate Content",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [650, 300],
+      "parameters": {
+        "url": "https://api.anthropic.com/v1/messages",
+        "method": "POST",
+        "headers": {
+          "x-api-key": "{{ $env.CLAUDE_API_KEY }}",
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json"
+        },
+        "body": {
+          "model": "claude-3-haiku-20240307",
+          "max_tokens": 500,
+          "messages": [
+            {
+              "role": "user",
+              "content": "Create engaging social media content in Spanish for this product: {{ $json.name }}. Include emojis and hashtags. Keep it under 280 characters for Twitter."
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "4",
+      "name": "Generate Image",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [850, 300],
+      "parameters": {
+        "url": "https://api.openai.com/v1/images/generations",
+        "method": "POST",
+        "headers": {
+          "Authorization": "Bearer {{ $env.OPENAI_API_KEY }}",
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "model": "dall-e-3",
+          "prompt": "Product photography for e-commerce: {{ $json.product_name }}, professional lighting, white background, high quality",
+          "n": 1,
+          "size": "1024x1024",
+          "quality": "standard"
+        }
+      }
+    },
+    {
+      "id": "5",
+      "name": "Post to Social Media",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1050, 300],
+      "parameters": {
+        "url": "https://graph.facebook.com/v18.0/{{ $env.FACEBOOK_PAGE_ID }}/photos",
+        "method": "POST",
+        "body": {
+          "message": "{{ $json.content }}",
+          "url": "{{ $json.image_url }}",
+          "access_token": "{{ $env.FACEBOOK_ACCESS_TOKEN }}"
+        }
+      }
+    },
+    {
+      "id": "6",
+      "name": "Log Results",
+      "type": "n8n-nodes-base.postgres",
+      "position": [1250, 300],
+      "parameters": {
+        "operation": "insert",
+        "table": "content_log",
+        "columns": "product_id,content,image_url,platform,status,created_at",
+        "values": "={{ $json.product_id }},={{ $json.content }},={{ $json.image_url }},=facebook,=success,={{ Date.now() }}"
+      }
+    }
+  ],
+  "connections": {
+    "Daily Trigger": {
+      "main": [["Get Products"]]
+    },
+    "Get Products": {
+      "main": [["Generate Content"]]
+    },
+    "Generate Content": {
+      "main": [["Generate Image"]]
+    },
+    "Generate Image": {
+      "main": [["Post to Social Media"]]
+    },
+    "Post to Social Media": {
+      "main": [["Log Results"]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "timezone": "Europe/Madrid"
+  }
+}

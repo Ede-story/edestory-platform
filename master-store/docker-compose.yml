@@ -1,0 +1,84 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: edestory-postgres
+    environment:
+      POSTGRES_DB: saleor
+      POSTGRES_USER: saleor
+      POSTGRES_PASSWORD: saleor
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - edestory-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: edestory-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - edestory-network
+
+  saleor-api:
+    image: ghcr.io/saleor/saleor:3.19
+    container_name: edestory-saleor
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      DATABASE_URL: postgresql://saleor:saleor@postgres:5432/saleor
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: "changeme-in-production-very-secret-key"
+      DEBUG: "True"
+      ALLOWED_HOSTS: "localhost,127.0.0.1,saleor-api,shop.ede-story.com"
+      INTERNAL_IPS: "127.0.0.1"
+      DEFAULT_FROM_EMAIL: "noreply@ede-story.com"
+      EMAIL_URL: "console:///"
+      ENABLE_ACCOUNT_CONFIRMATION_BY_EMAIL: "False"
+      DEFAULT_CHANNEL_SLUG: "default-channel"
+    ports:
+      - "8000:8000"
+    volumes:
+      - saleor_media:/app/media
+    networks:
+      - edestory-network
+    command: python manage.py runserver 0.0.0.0:8000
+
+  saleor-dashboard:
+    image: ghcr.io/saleor/saleor-dashboard:latest
+    container_name: edestory-dashboard
+    ports:
+      - "9000:80"
+    networks:
+      - edestory-network
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: edestory-n8n
+    environment:
+      N8N_BASIC_AUTH_ACTIVE: "true"
+      N8N_BASIC_AUTH_USER: admin
+      N8N_BASIC_AUTH_PASSWORD: changeme
+      N8N_HOST: localhost
+      N8N_PORT: 5678
+      N8N_PROTOCOL: http
+      WEBHOOK_URL: http://localhost:5678/
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks:
+      - edestory-network
+
+volumes:
+  postgres_data:
+  saleor_media:
+  n8n_data:
+
+networks:
+  edestory-network:
+    driver: bridge

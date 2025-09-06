@@ -1,0 +1,306 @@
+{
+  "name": "Instagram Competitor Analysis & Trend Watching",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "analyze-competitor",
+        "responseMode": "responseNode",
+        "options": {
+          "responseData": "allEntries",
+          "responsePropertyName": "data"
+        }
+      },
+      "id": "webhook-trigger",
+      "name": "Receive Instagram URL",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "instagram-competitor-analysis"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract Instagram username from URL\nconst url = $input.first().json.instagram_url;\nconst username = url.match(/instagram\\.com\\/([^\\/\\?]+)/)?.[1];\n\nif (!username) {\n  throw new Error('Invalid Instagram URL');\n}\n\n// Set initial parameters\nreturn [{\n  json: {\n    username: username,\n    original_url: url,\n    analysis_date: new Date().toISOString(),\n    regions_to_analyze: ['USA', 'UK', 'EU', 'RU'],\n    max_competitors: 100,\n    analysis_depth: 'deep' // deep or shallow\n  }\n}];"
+      },
+      "id": "extract-username",
+      "name": "Extract Username",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.apify.com/v2/actor-tasks/instagram-profile-scraper/run-sync",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{$env[\"APIFY_TOKEN\"]}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"username\": \"{{$json.username}}\",\n  \"resultsLimit\": 1,\n  \"includeRelatedProfiles\": true,\n  \"extendOutputFunction\": \"async ({ data, item, page, request, customData }) => { return { ...item, followers: data.followers, following: data.following, posts: data.posts }; }\"\n}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "fetch-profile",
+      "name": "Fetch Main Profile Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Analyze profile and find potential competitors\nconst profile = $input.first().json;\nconst competitors = [];\n\n// Extract hashtags from recent posts\nconst hashtags = profile.posts?.flatMap(post => \n  post.caption?.match(/#\\w+/g) || []\n).filter(Boolean);\n\n// Extract mentioned accounts\nconst mentions = profile.posts?.flatMap(post => \n  post.caption?.match(/@\\w+/g) || []\n).filter(Boolean);\n\n// Analyze following/followers for similar accounts\nconst similarAccounts = profile.relatedProfiles || [];\n\nreturn [{\n  json: {\n    mainProfile: {\n      username: profile.username,\n      followers: profile.followersCount,\n      following: profile.followingCount,\n      posts: profile.postsCount,\n      engagement_rate: profile.engagementRate,\n      bio: profile.biography,\n      website: profile.website,\n      category: profile.businessCategory,\n      is_verified: profile.isVerified\n    },\n    searchParams: {\n      hashtags: [...new Set(hashtags)].slice(0, 10),\n      mentions: [...new Set(mentions)].slice(0, 20),\n      similarAccounts: similarAccounts.slice(0, 30),\n      category: profile.businessCategory\n    }\n  }\n}];"
+      },
+      "id": "analyze-profile",
+      "name": "Analyze Profile & Extract Search Params",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 10,
+        "options": {}
+      },
+      "id": "split-batches",
+      "name": "Split Into Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 2,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.apify.com/v2/actor-tasks/instagram-hashtag-scraper/run-sync",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{$env[\"APIFY_TOKEN\"]}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"hashtags\": {{JSON.stringify($json.searchParams.hashtags)}},\n  \"resultsLimit\": 100,\n  \"searchType\": \"hashtag\",\n  \"sort\": \"top\"\n}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "search-hashtags",
+      "name": "Search by Hashtags",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1250, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Geo-filter competitors by region\nconst competitors = $input.all();\nconst regions = {\n  'USA': ['United States', 'US', 'USA', 'America', 'New York', 'Los Angeles', 'Chicago', 'Houston', 'Phoenix'],\n  'UK': ['United Kingdom', 'UK', 'England', 'London', 'Manchester', 'Birmingham', 'Leeds', 'Glasgow'],\n  'EU': ['Europe', 'EU', 'Germany', 'France', 'Italy', 'Spain', 'Netherlands', 'Belgium', 'Poland', 'Sweden'],\n  'RU': ['Russia', 'РФ', 'Россия', 'Moscow', 'Москва', 'Saint Petersburg', 'Санкт-Петербург']\n};\n\nconst geoFiltered = competitors.map(item => {\n  const profile = item.json;\n  let detectedRegion = 'Unknown';\n  \n  // Check bio and location for region keywords\n  const textToCheck = `${profile.bio || ''} ${profile.location || ''} ${profile.website || ''}`.toLowerCase();\n  \n  for (const [region, keywords] of Object.entries(regions)) {\n    if (keywords.some(keyword => textToCheck.includes(keyword.toLowerCase()))) {\n      detectedRegion = region;\n      break;\n    }\n  }\n  \n  return {\n    json: {\n      ...profile,\n      detected_region: detectedRegion,\n      relevance_score: calculateRelevanceScore(profile)\n    }\n  };\n});\n\nfunction calculateRelevanceScore(profile) {\n  let score = 0;\n  \n  // Followers count weight\n  if (profile.followers > 10000) score += 20;\n  if (profile.followers > 100000) score += 30;\n  \n  // Engagement rate weight\n  if (profile.engagement_rate > 2) score += 15;\n  if (profile.engagement_rate > 5) score += 25;\n  \n  // Verified account\n  if (profile.is_verified) score += 20;\n  \n  // Recent activity\n  if (profile.recent_posts_count > 10) score += 10;\n  \n  return Math.min(score, 100);\n}\n\nreturn geoFiltered;"
+      },
+      "id": "geo-filter",
+      "name": "Geo-Filter & Score Competitors",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1450, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Analyze trends from competitors\nconst competitors = $input.all();\nconst trends = {\n  hashtags: {},\n  content_types: {},\n  posting_times: {},\n  engagement_patterns: {},\n  growth_trends: []\n};\n\ncompetitors.forEach(comp => {\n  const data = comp.json;\n  \n  // Aggregate hashtag usage\n  if (data.hashtags) {\n    data.hashtags.forEach(tag => {\n      trends.hashtags[tag] = (trends.hashtags[tag] || 0) + 1;\n    });\n  }\n  \n  // Analyze content types\n  if (data.media_type) {\n    trends.content_types[data.media_type] = (trends.content_types[data.media_type] || 0) + 1;\n  }\n  \n  // Growth analysis\n  if (data.followers && data.followers_last_month) {\n    const growth = ((data.followers - data.followers_last_month) / data.followers_last_month) * 100;\n    trends.growth_trends.push({\n      username: data.username,\n      growth_rate: growth,\n      current_followers: data.followers\n    });\n  }\n});\n\n// Sort and limit results\ntrends.top_hashtags = Object.entries(trends.hashtags)\n  .sort((a, b) => b[1] - a[1])\n  .slice(0, 20)\n  .map(([tag, count]) => ({ tag, count }));\n\ntrends.top_content_types = Object.entries(trends.content_types)\n  .sort((a, b) => b[1] - a[1])\n  .map(([type, count]) => ({ type, count }));\n\ntrends.fastest_growing = trends.growth_trends\n  .sort((a, b) => b.growth_rate - a.growth_rate)\n  .slice(0, 10);\n\nreturn [{\n  json: {\n    analysis_timestamp: new Date().toISOString(),\n    total_competitors_analyzed: competitors.length,\n    trends: trends,\n    recommendations: generateRecommendations(trends)\n  }\n}];\n\nfunction generateRecommendations(trends) {\n  const recommendations = [];\n  \n  // Hashtag recommendations\n  if (trends.top_hashtags.length > 0) {\n    recommendations.push({\n      type: 'hashtags',\n      suggestion: `Use trending hashtags: ${trends.top_hashtags.slice(0, 5).map(h => h.tag).join(', ')}`,\n      priority: 'high'\n    });\n  }\n  \n  // Content type recommendations\n  if (trends.top_content_types[0]) {\n    recommendations.push({\n      type: 'content',\n      suggestion: `Focus on ${trends.top_content_types[0].type} content - most popular among competitors`,\n      priority: 'medium'\n    });\n  }\n  \n  // Growth strategy\n  if (trends.fastest_growing.length > 0) {\n    recommendations.push({\n      type: 'strategy',\n      suggestion: `Study fast-growing accounts: ${trends.fastest_growing.slice(0, 3).map(a => '@' + a.username).join(', ')}`,\n      priority: 'high'\n    });\n  }\n  \n  return recommendations;\n}"
+      },
+      "id": "trend-analysis",
+      "name": "Trend Analysis Engine",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1650, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "table": "competitors",
+        "columns": "username,profile_url,followers,following,posts,engagement_rate,region,category,bio,website,is_verified,relevance_score,analysis_date",
+        "options": {}
+      },
+      "id": "save-to-db",
+      "name": "Save to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1850, 200],
+      "credentials": {
+        "postgres": {
+          "id": "1",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate comprehensive report\nconst analysis = $input.first().json;\nconst competitors = $node[\"Geo-Filter & Score Competitors\"].json;\n\n// Group competitors by region\nconst byRegion = {};\n['USA', 'UK', 'EU', 'RU'].forEach(region => {\n  byRegion[region] = competitors\n    .filter(c => c.detected_region === region)\n    .sort((a, b) => b.relevance_score - a.relevance_score)\n    .slice(0, 25); // Top 25 per region\n});\n\nconst report = {\n  report_id: generateReportId(),\n  generation_date: new Date().toISOString(),\n  \n  executive_summary: {\n    total_competitors_found: competitors.length,\n    top_regions: Object.keys(byRegion).map(region => ({\n      region,\n      count: byRegion[region].length,\n      avg_followers: Math.round(byRegion[region].reduce((sum, c) => sum + (c.followers || 0), 0) / byRegion[region].length)\n    })),\n    key_trends: analysis.trends.top_hashtags.slice(0, 5),\n    top_recommendations: analysis.recommendations.filter(r => r.priority === 'high')\n  },\n  \n  competitor_analysis: {\n    by_region: byRegion,\n    top_100_global: competitors\n      .sort((a, b) => b.relevance_score - a.relevance_score)\n      .slice(0, 100)\n      .map(c => ({\n        rank: competitors.indexOf(c) + 1,\n        username: c.username,\n        region: c.detected_region,\n        followers: c.followers,\n        engagement_rate: c.engagement_rate,\n        relevance_score: c.relevance_score,\n        profile_url: `https://instagram.com/${c.username}`\n      }))\n  },\n  \n  trend_insights: {\n    hashtag_trends: analysis.trends.top_hashtags,\n    content_strategy: analysis.trends.top_content_types,\n    growth_leaders: analysis.trends.fastest_growing,\n    posting_patterns: analysis.trends.posting_times\n  },\n  \n  actionable_insights: analysis.recommendations,\n  \n  export_formats: {\n    csv_url: `/export/competitors-${generateReportId()}.csv`,\n    pdf_url: `/export/report-${generateReportId()}.pdf`,\n    json_url: `/export/data-${generateReportId()}.json`\n  }\n};\n\nreturn [{ json: report }];\n\nfunction generateReportId() {\n  return Date.now().toString(36) + Math.random().toString(36).substr(2);\n}"
+      },
+      "id": "generate-report",
+      "name": "Generate Final Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2050, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{$env[\"EMAIL_FROM\"]}}",
+        "toEmail": "={{$json.recipient_email || $env[\"DEFAULT_REPORT_EMAIL\"]}}",
+        "subject": "Instagram Competitor Analysis Report - {{$json.report_id}}",
+        "emailType": "html",
+        "htmlBody": "<!DOCTYPE html>\n<html>\n<head>\n  <style>\n    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }\n    .header { background: linear-gradient(45deg, #833ab4, #fd1d1d, #fcb045); color: white; padding: 20px; text-align: center; }\n    .section { margin: 20px; padding: 20px; background: #f9f9f9; border-radius: 8px; }\n    .metric { display: inline-block; margin: 10px; padding: 15px; background: white; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }\n    .competitor-list { list-style: none; padding: 0; }\n    .competitor-item { padding: 10px; margin: 5px 0; background: white; border-left: 3px solid #833ab4; }\n    .trend-tag { display: inline-block; padding: 5px 10px; margin: 3px; background: #833ab4; color: white; border-radius: 15px; font-size: 12px; }\n  </style>\n</head>\n<body>\n  <div class=\"header\">\n    <h1>Instagram Competitor Analysis Report</h1>\n    <p>Generated: {{$json.generation_date}}</p>\n  </div>\n  \n  <div class=\"section\">\n    <h2>Executive Summary</h2>\n    <div class=\"metric\">\n      <strong>Total Competitors:</strong> {{$json.executive_summary.total_competitors_found}}\n    </div>\n    <div class=\"metric\">\n      <strong>Regions Analyzed:</strong> USA, UK, EU, RU\n    </div>\n  </div>\n  \n  <div class=\"section\">\n    <h2>Top Trending Hashtags</h2>\n    {{#each $json.trend_insights.hashtag_trends}}\n      <span class=\"trend-tag\">{{this.tag}} ({{this.count}})</span>\n    {{/each}}\n  </div>\n  \n  <div class=\"section\">\n    <h2>Top 10 Global Competitors</h2>\n    <ul class=\"competitor-list\">\n      {{#each $json.competitor_analysis.top_100_global}}\n        {{#if @index < 10}}\n          <li class=\"competitor-item\">\n            <strong>{{this.rank}}. @{{this.username}}</strong> ({{this.region}})<br>\n            Followers: {{this.followers}} | Engagement: {{this.engagement_rate}}% | Score: {{this.relevance_score}}\n          </li>\n        {{/if}}\n      {{/each}}\n    </ul>\n  </div>\n  \n  <div class=\"section\">\n    <h2>Key Recommendations</h2>\n    {{#each $json.actionable_insights}}\n      <div class=\"metric\">\n        <strong>{{this.type}}:</strong> {{this.suggestion}}\n      </div>\n    {{/each}}\n  </div>\n  \n  <div class=\"section\">\n    <h2>Full Report Downloads</h2>\n    <p>Access complete data:</p>\n    <ul>\n      <li><a href=\"{{$json.export_formats.csv_url}}\">Download CSV</a></li>\n      <li><a href=\"{{$json.export_formats.pdf_url}}\">Download PDF Report</a></li>\n      <li><a href=\"{{$json.export_formats.json_url}}\">Download JSON Data</a></li>\n    </ul>\n  </div>\n</body>\n</html>",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "send-report",
+      "name": "Send Email Report",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [2250, 300]
+    },
+    {
+      "parameters": {
+        "content": "## Instagram Trend Watching Agent\n\n### Функционал:\n1. **Парсинг профиля** - извлечение данных из Instagram URL\n2. **Поиск конкурентов** - по хештегам, упоминаниям, категории\n3. **Гео-фильтрация** - США, UK, Европа, Россия\n4. **Анализ трендов** - хештеги, типы контента, рост\n5. **Scoring** - оценка релевантности конкурентов\n6. **Отчетность** - топ-100 с разбивкой по регионам\n\n### Требуемые API:\n- Apify (Instagram scraping)\n- PostgreSQL (хранение данных)\n- SMTP (отправка отчетов)\n\n### Webhook endpoint:\n`POST /webhook/analyze-competitor`\n```json\n{\n  \"instagram_url\": \"https://instagram.com/username\",\n  \"recipient_email\": \"user@example.com\"\n}\n```",
+        "height": 400,
+        "width": 350
+      },
+      "id": "documentation",
+      "name": "Documentation",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [50, 50]
+    }
+  ],
+  "connections": {
+    "Receive Instagram URL": {
+      "main": [
+        [
+          {
+            "node": "Extract Username",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Username": {
+      "main": [
+        [
+          {
+            "node": "Fetch Main Profile Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Main Profile Data": {
+      "main": [
+        [
+          {
+            "node": "Analyze Profile & Extract Search Params",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Profile & Extract Search Params": {
+      "main": [
+        [
+          {
+            "node": "Split Into Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Into Batches": {
+      "main": [
+        [
+          {
+            "node": "Search by Hashtags",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search by Hashtags": {
+      "main": [
+        [
+          {
+            "node": "Geo-Filter & Score Competitors",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Geo-Filter & Score Competitors": {
+      "main": [
+        [
+          {
+            "node": "Save to PostgreSQL",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Trend Analysis Engine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trend Analysis Engine": {
+      "main": [
+        [
+          {
+            "node": "Generate Final Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Final Report": {
+      "main": [
+        [
+          {
+            "node": "Send Email Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "versionId": "01",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "edestory-trend-watching"
+  },
+  "tags": ["instagram", "competitor-analysis", "trend-watching", "marketing"]
+}

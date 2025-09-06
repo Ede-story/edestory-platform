@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edestory Platform - Центр управления проектами</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --graphite: #3d3d3d;
+            --black: #171717;
+            --gold: #E6A853;
+            --burgundy: #8B2635;
+            --bg-primary: #fcfcfc;
+            --bg-white: #ffffff;
+            --success: #4CAF50;
+            --warning: #FFC107;
+            --info: #2196F3;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Montserrat', sans-serif;
+            background: var(--bg-primary);
+            color: var(--black);
+            line-height: 1.6;
+        }
+        
+        header {
+            background: linear-gradient(135deg, var(--graphite), var(--black));
+            color: white;
+            padding: 2rem 0;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--gold);
+            margin-bottom: 0.5rem;
+        }
+        
+        .subtitle {
+            color: #ccc;
+            font-size: 1.1rem;
+        }
+        
+        .project-switcher {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        
+        .project-btn {
+            padding: 0.5rem 1.5rem;
+            border: 2px solid var(--gold);
+            background: transparent;
+            color: var(--gold);
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 600;
+        }
+        
+        .project-btn:hover, .project-btn.active {
+            background: var(--gold);
+            color: var(--black);
+        }
+        
+        nav {
+            background: white;
+            padding: 1rem 0;
+            border-bottom: 2px solid var(--gold);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+        
+        nav ul {
+            display: flex;
+            list-style: none;
+            gap: 2rem;
+            flex-wrap: wrap;
+        }
+        
+        nav a {
+            color: var(--graphite);
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.3s;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+        }
+        
+        nav a:hover {
+            color: var(--gold);
+            background: rgba(230, 168, 83, 0.1);
+        }
+        
+        .projects-comparison {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin: 2rem 0;
+        }
+        
+        .project-section {
+            background: white;
+            border-radius: 8px;
+            padding: 2rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            border-top: 4px solid var(--gold);
+        }
+        
+        .project-section.corporate {
+            border-top-color: var(--info);
+        }
+        
+        .project-section.shop {
+            border-top-color: var(--success);
+        }
+        
+        .project-section h2 {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+            font-size: 1.8rem;
+        }
+        
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .metric {
+            background: var(--bg-primary);
+            padding: 1rem;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        .metric-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--gold);
+        }
+        
+        .metric-label {
+            color: var(--graphite);
+            font-size: 0.85rem;
+            margin-top: 0.25rem;
+        }
+        
+        .task-list {
+            list-style: none;
+            margin: 1rem 0;
+        }
+        
+        .task-item {
+            padding: 0.75rem;
+            margin: 0.5rem 0;
+            background: var(--bg-primary);
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: transform 0.2s;
+        }
+        
+        .task-item:hover {
+            transform: translateX(5px);
+            background: rgba(230, 168, 83, 0.1);
+        }
+        
+        .status {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: white;
+        }
+        
+        .status.completed { background: var(--success); }
+        .status.in-progress { background: var(--warning); color: var(--black); }
+        .status.pending { background: #9E9E9E; }
+        .status.blocked { background: var(--burgundy); }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin: 3rem 0;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+        }
+        
+        .card h3 {
+            color: var(--graphite);
+            font-size: 1.3rem;
+            margin-bottom: 1rem;
+        }
+        
+        .card ul {
+            list-style: none;
+        }
+        
+        .card li {
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        
+        .card a {
+            color: var(--graphite);
+            text-decoration: none;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: color 0.3s;
+        }
+        
+        .card a:hover {
+            color: var(--gold);
+        }
+        
+        .badge {
+            background: var(--gold);
+            color: white;
+            padding: 0.2rem 0.6rem;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        
+        .badge.new { background: var(--success); }
+        .badge.critical { background: var(--burgundy); }
+        .badge.info { background: var(--info); }
+        
+        .quick-actions {
+            background: linear-gradient(135deg, var(--graphite), var(--black));
+            color: white;
+            padding: 2rem;
+            border-radius: 8px;
+            margin: 2rem 0;
+        }
+        
+        .quick-actions h2 {
+            color: var(--gold);
+            margin-bottom: 1rem;
+        }
+        
+        .actions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        
+        .action-btn {
+            background: rgba(255,255,255,0.1);
+            color: white;
+            padding: 1rem;
+            border-radius: 4px;
+            text-decoration: none;
+            text-align: center;
+            transition: all 0.3s;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        
+        .action-btn:hover {
+            background: var(--gold);
+            color: var(--black);
+            transform: translateY(-2px);
+        }
+        
+        footer {
+            background: var(--graphite);
+            color: white;
+            text-align: center;
+            padding: 2rem;
+            margin-top: 4rem;
+        }
+        
+        footer a {
+            color: var(--gold);
+            text-decoration: none;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 0.5rem 0;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: var(--gold);
+            transition: width 0.3s;
+        }
+        
+        @media (max-width: 768px) {
+            .projects-comparison {
+                grid-template-columns: 1fr;
+            }
+            h1 { font-size: 1.8rem; }
+            .grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>📊 Центр управления Edestory Platform</h1>
+            <p class="subtitle">Система управления корпоративным сайтом и e-commerce платформой</p>
+            <div class="project-switcher">
+                <button class="project-btn" onclick="showProject('all')">🏠 Все проекты</button>
+                <button class="project-btn" onclick="showProject('corporate')">🏢 Корпоративный сайт</button>
+                <button class="project-btn" onclick="showProject('shop')">🛍 Интернет-магазин</button>
+            </div>
+        </div>
+    </header>
+    
+    <nav>
+        <div class="container">
+            <ul>
+                <li><a href="#sprints">🎯 Спринты</a></li>
+                <li><a href="#tasks">📋 Задачи</a></li>
+                <li><a href="#architecture">🏗 Архитектура</a></li>
+                <li><a href="#testing">🧪 Тестирование</a></li>
+                <li><a href="#reports">📊 Отчеты</a></li>
+                <li><a href="#metrics">📈 Метрики</a></li>
+                <li><a href="CLAUDE.md">🤖 Claude инструкции</a></li>
+            </ul>
+        </div>
+    </nav>
+    
+    <div class="container">
+        <!-- Быстрые действия -->
+        <div class="quick-actions">
+            <h2>⚡ Быстрые действия</h2>
+            <div class="actions-grid">
+                <a href="SPRINTS/CORP_SPRINT_001.md" class="action-btn">🏢 Спринт корп. сайта</a>
+                <a href="SPRINTS/SHOP_SPRINT_001.md" class="action-btn">🛍 Спринт магазина</a>
+                <a href="TESTING_PROTOCOL.md" class="action-btn">🧪 Протокол тестирования</a>
+                <a href="CLAUDE.md" class="action-btn">🤖 Инструкции для Claude</a>
+                <a href="#daily-report" class="action-btn">📝 Дневной отчет</a>
+                <a href="ARCHITECTURE.md" class="action-btn">🏗 Архитектура</a>
+            </div>
+        </div>
+        
+        <!-- Сравнение проектов -->
+        <div class="projects-comparison" id="sprints">
+            <!-- Корпоративный сайт -->
+            <div class="project-section corporate">
+                <h2>🏢 Корпоративный сайт</h2>
+                <p style="margin-bottom: 1rem;">
+                    <strong>Домен:</strong> www.ede-story.com<br>
+                    <strong>Статус:</strong> <span class="status pending">Планирование</span><br>
+                    <strong>Агент:</strong> CORP_AGENT (Чат 1)
+                </p>
+                
+                <h3>📊 Метрики спринта</h3>
+                <div class="metrics">
+                    <div class="metric">
+                        <div class="metric-value">0%</div>
+                        <div class="metric-label">Прогресс</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-value">0/15</div>
+                        <div class="metric-label">Задачи</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-value">Week 1</div>
+                        <div class="metric-label">Спринт</div>
+                    </div>
+                </div>
+                
+                <h3>🎯 Текущие задачи</h3>
+                <ul class="task-list">
+                    <li class="task-item">
+                        <span>Инициализация Next.js 14</span>
+                        <span class="status pending">Ожидает</span>
+                    </li>
+                    <li class="task-item">
+                        <span>Настройка Tailwind + бренд</span>
+                        <span class="status pending">Ожидает</span>
+                    </li>
+                    <li class="task-item">
+                        <span>Создание главной страницы</span>
+                        <span class="status pending">Ожидает</span>
+                    </li>
+                    <li class="task-item">
+                        <span>Страница услуг</span>
+                        <span class="status pending">Ожидает</span>
+                    </li>
+                </ul>
+                
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: 0%"></div>
+                </div>
+                
+                <p style="margin-top: 1rem;">
+                    <a href="SPRINTS/CORP_SPRINT_001.md" style="color: var(--gold);">
+                        📄 Открыть полный спринт →
+                    </a>
+                </p>
+            </div>
+            
+            <!-- Интернет-магазин -->
+            <div class="project-section shop">
+                <h2>🛍 Интернет-магазин</h2>
+                <p style="margin-bottom: 1rem;">
+                    <strong>Домен:</strong> shop.ede-story.com<br>
+                    <strong>Статус:</strong> <span class="status in-progress">В разработке</span><br>
+                    <strong>Агент:</strong> SHOP_AGENT (Чат 2)
+                </p>
+                
+                <h3>📊 Метрики спринта</h3>
+                <div class="metrics">
+                    <div class="metric">
+                        <div class="metric-value">15%</div>
+                        <div class="metric-label">Прогресс</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-value">3/20</div>
+                        <div class="metric-label">Задачи</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-value">Sprint 1</div>
+                        <div class="metric-label">Спринт</div>
+                    </div>
+                </div>
+                
+                <h3>✅ Выполненные задачи</h3>
+                <ul class="task-list">
+                    <li class="task-item">
+                        <span>Применение Edestory брендинга</span>
+                        <span class="status completed">Готово</span>
+                    </li>
+                    <li class="task-item">
+                        <span>Тестирование корзины</span>
+                        <span class="status completed">Готово</span>
+                    </li>
+                    <li class="task-item">
+                        <span>Структура документации</span>
+                        <span class="status completed">Готово</span>
+                    </li>
+                </ul>
+                
+                <h3>🔄 В работе</h3>
+                <ul class="task-list">
+                    <li class="task-item">
+                        <span>AliExpress интеграция</span>
+                        <span class="status in-progress">В работе</span>
+                    </li>
+                    <li class="task-item">
+                        <span>Stripe платежи</span>
+                        <span class="status pending">Ожидает</span>
+                    </li>
+                    <li class="task-item">
+                        <span>n8n автоматизация</span>
+                        <span class="status pending">Ожидает</span>
+                    </li>
+                </ul>
+                
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: 15%"></div>
+                </div>
+                
+                <p style="margin-top: 1rem;">
+                    <a href="SPRINTS/SHOP_SPRINT_001.md" style="color: var(--gold);">
+                        📄 Открыть полный спринт →
+                    </a>
+                </p>
+            </div>
+        </div>
+        
+        <!-- Документация -->
+        <div class="grid" id="docs">
+            <!-- Архитектура -->
+            <div class="card">
+                <h3>🏗 Архитектура</h3>
+                <ul>
+                    <li>
+                        <a href="ARCHITECTURE.md">
+                            Системная архитектура
+                            <span class="badge new">Обновлено</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="AUTOMATION_ROADMAP.md">
+                            План автоматизации
+                            <span class="badge">2025-2036</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="MCP_GUIDE.md">
+                            MCP интеграция
+                        </a>
+                    </li>
+                </ul>
+            </div>
+            
+            <!-- Тестирование -->
+            <div class="card">
+                <h3>🧪 Тестирование</h3>
+                <ul>
+                    <li>
+                        <a href="TESTING_PROTOCOL.md">
+                            Протокол тестирования
+                            <span class="badge critical">Обязательно</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="REPORTS/tests/">
+                            Отчеты тестов
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#coverage">
+                            Покрытие тестами
+                            <span class="badge">3%</span>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+            
+            <!-- Отчеты -->
+            <div class="card">
+                <h3>📊 Отчеты</h3>
+                <ul>
+                    <li>
+                        <a href="REPORTS/daily/">
+                            Ежедневные отчеты
+                            <span class="badge new">Сегодня</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="REPORTS/corporate/">
+                            Отчеты корп. сайта
+                        </a>
+                    </li>
+                    <li>
+                        <a href="REPORTS/shop/">
+                            Отчеты магазина
+                        </a>
+                    </li>
+                </ul>
+            </div>
+            
+            <!-- Руководства -->
+            <div class="card">
+                <h3>📖 Руководства</h3>
+                <ul>
+                    <li>
+                        <a href="CLAUDE.md">
+                            Инструкции Claude Code
+                            <span class="badge critical">v6.0</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="../corporate-site/README.md">
+                            Корп. сайт README
+                        </a>
+                    </li>
+                    <li>
+                        <a href="../master-store/README.md">
+                            Магазин README
+                        </a>
+                    </li>
+                </ul>
+            </div>
+            
+            <!-- Метрики -->
+            <div class="card">
+                <h3>📈 Метрики и KPI</h3>
+                <ul>
+                    <li>
+                        <a href="#performance">
+                            Performance метрики
+                            <span class="badge">90/100</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#business">
+                            Бизнес KPI
+                        </a>
+                    </li>
+                    <li>
+                        <a href="dashboard.html">
+                            Live Dashboard
+                            <span class="badge info">В разработке</span>
+                        </a>
+                    </li>
+                </ul>
+            </div>
+            
+            <!-- Быстрые ссылки -->
+            <div class="card">
+                <h3>🔗 Полезные ссылки</h3>
+                <ul>
+                    <li>
+                        <a href="https://github.com/Ede-story/edestory-platform">
+                            GitHub репозиторий
+                            <span class="badge">External</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="http://localhost:3002">
+                            Магазин (Local)
+                        </a>
+                    </li>
+                    <li>
+                        <a href="http://localhost:3000">
+                            Корп. сайт (Local)
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+        
+        <!-- Инструкции для работы с агентами -->
+        <div class="quick-actions" style="background: white; color: var(--black); border: 2px solid var(--gold);">
+            <h2 style="color: var(--graphite);">🤖 Как работать с двумя агентами</h2>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-top: 1.5rem;">
+                <div>
+                    <h3 style="color: var(--info); margin-bottom: 1rem;">Чат 1: Корпоративный сайт</h3>
+                    <p style="margin-bottom: 0.5rem;">
+                        <strong>Начало работы:</strong> "Работаем с корпоративным сайтом"
+                    </p>
+                    <p style="margin-bottom: 0.5rem;">
+                        <strong>Контекст:</strong> /corporate-site/
+                    </p>
+                    <p style="margin-bottom: 0.5rem;">
+                        <strong>Фокус:</strong> Landing pages, SEO, контент, лидогенерация
+                    </p>
+                    <p>
+                        <strong>Спринт:</strong> <a href="SPRINTS/CORP_SPRINT_001.md" style="color: var(--gold);">CORP_SPRINT_001.md</a>
+                    </p>
+                </div>
+                <div>
+                    <h3 style="color: var(--success); margin-bottom: 1rem;">Чат 2: Интернет-магазин</h3>
+                    <p style="margin-bottom: 0.5rem;">
+                        <strong>Начало работы:</strong> "Работаем с интернет-магазином"
+                    </p>
+                    <p style="margin-bottom: 0.5rem;">
+                        <strong>Контекст:</strong> /master-store/
+                    </p>
+                    <p style="margin-bottom: 0.5rem;">
+                        <strong>Фокус:</strong> Saleor, e-commerce, клонирование, AliExpress
+                    </p>
+                    <p>
+                        <strong>Спринт:</strong> <a href="SPRINTS/SHOP_SPRINT_001.md" style="color: var(--gold);">SHOP_SPRINT_001.md</a>
+                    </p>
+                </div>
+            </div>
+            <p style="margin-top: 1.5rem; padding: 1rem; background: rgba(230,168,83,0.1); border-radius: 4px;">
+                <strong>💡 Совет:</strong> Откройте два окна Claude Code параллельно. В первом работайте с корпоративным сайтом, во втором - с магазином. 
+                Каждый агент будет вести свой спринт и отчетность, но следовать единым стандартам из CLAUDE.md.
+            </p>
+        </div>
+    </div>
+    
+    <footer>
+        <div class="container">
+            <p>© 2025 Edestory Platform | <a href="https://github.com/Ede-story/edestory-platform">GitHub</a> | <a href="mailto:support@ede-story.com">Поддержка</a></p>
+            <p style="margin-top: 0.5rem; font-size: 0.9rem; opacity: 0.8;">
+                Последнее обновление: 4 декабря 2025 | Версия 6.0 | 
+                <a href="CLAUDE.md">Инструкции для Claude</a>
+            </p>
+        </div>
+    </footer>
+    
+    <script>
+        // Функция переключения между проектами
+        function showProject(project) {
+            const buttons = document.querySelectorAll('.project-btn');
+            buttons.forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            // Здесь можно добавить логику фильтрации контента
+            console.log('Showing project:', project);
+        }
+        
+        // Автообновление метрик каждые 30 секунд
+        setInterval(() => {
+            console.log('Обновление метрик...');
+            // Здесь будет загрузка реальных метрик из файлов
+        }, 30000);
+        
+        // Плавная прокрутка
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            });
+        });
+        
+        // Загрузка статуса задач (в будущем из реальных файлов)
+        function updateTaskStatus() {
+            // Здесь будет AJAX запрос к спринт файлам
+            console.log('Загрузка статуса задач...');
+        }
+        
+        // Загрузка при старте
+        document.addEventListener('DOMContentLoaded', updateTaskStatus);
+    </script>
+</body>
+</html>

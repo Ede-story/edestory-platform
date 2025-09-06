@@ -1,0 +1,136 @@
+{
+  "composer": {
+    "yoloMode": true,
+    "autoRun": true,
+    "confirmBeforeRun": false,
+    "allowedCommands": [
+      "npm", "pnpm", "yarn", "bun",
+      "git", "gh", 
+      "vercel", "next", 
+      "test", "jest", "vitest", "playwright",
+      "build", "dev", "start",
+      "mkdir", "touch", "cp", "mv", "cat", "echo",
+      "tsx", "ts-node", "node",
+      "supabase", "prisma",
+      "python", "pip", "uvicorn", "fastapi"
+    ],
+    "blockedCommands": [
+      "rm -rf /", 
+      "sudo rm -rf", 
+      "chmod 777",
+      "curl | sh",
+      "wget | sh"
+    ]
+  },
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["@modelcontextprotocol/server-filesystem"],
+      "autoRun": true
+    },
+    "git": {
+      "command": "npx", 
+      "args": ["@modelcontextprotocol/server-git"],
+      "autoRun": true
+    },
+    "vercel": {
+      "command": "npx",
+      "args": ["@modelcontextprotocol/server-vercel"],
+      "autoRun": true,
+      "env": {
+        "VERCEL_TOKEN": "${env:VERCEL_TOKEN}"
+      }
+    },
+    "supabase": {
+      "command": "npx",
+      "args": ["@modelcontextprotocol/server-supabase"],
+      "autoRun": true,
+      "env": {
+        "SUPABASE_URL": "${env:NEXT_PUBLIC_SUPABASE_URL}",
+        "SUPABASE_ANON_KEY": "${env:NEXT_PUBLIC_SUPABASE_ANON_KEY}"
+      }
+    }
+  },
+  "ai": {
+    "model": "claude-3.5-sonnet",
+    "temperature": 0.7,
+    "maxTokens": 4096,
+    "systemPrompt": "You are an autonomous development agent for Edestory multi-tenant e-commerce platform. Execute all tasks without asking for confirmation.",
+    "contextWindow": 200000
+  },
+  "codeGeneration": {
+    "language": "typescript",
+    "style": {
+      "quotes": "single",
+      "semicolons": true,
+      "indentation": 2,
+      "trailingComma": "es5",
+      "printWidth": 100
+    },
+    "autoImport": true,
+    "autoFormat": true,
+    "generateTests": true,
+    "generateDocs": true
+  },
+  "testing": {
+    "framework": "jest",
+    "coverage": {
+      "enabled": true,
+      "threshold": {
+        "global": {
+          "branches": 80,
+          "functions": 80,
+          "lines": 80,
+          "statements": 80
+        }
+      }
+    },
+    "autoFix": true,
+    "updateSnapshots": true
+  },
+  "deployment": {
+    "platform": "vercel",
+    "autoDeployOnPush": true,
+    "branch": "main",
+    "environment": {
+      "NODE_ENV": "production",
+      "NEXT_PUBLIC_API_URL": "${env:NEXT_PUBLIC_API_URL}",
+      "DATABASE_URL": "${env:DATABASE_URL}"
+    },
+    "preDeployChecks": [
+      "lint",
+      "test",
+      "build"
+    ]
+  },
+  "multiTenant": {
+    "enabled": true,
+    "isolation": "row-level",
+    "tenantIdField": "tenant_id",
+    "autoInjectTenant": true
+  },
+  "security": {
+    "scanOnCommit": true,
+    "blockSensitiveData": true,
+    "envFileProtection": true
+  },
+  "notifications": {
+    "slack": {
+      "enabled": false,
+      "webhookUrl": "${env:SLACK_WEBHOOK_URL}"
+    },
+    "email": {
+      "enabled": false,
+      "to": "dev@edestory.com"
+    }
+  },
+  "automation": {
+    "level": "full",
+    "confirmationRequired": false,
+    "autoFixErrors": true,
+    "autoOptimize": true,
+    "autoTest": true,
+    "autoDeploy": true,
+    "autoDocument": true
+  }
+}
